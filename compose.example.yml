@@ -10,7 +10,7 @@ services:
       - "1224:8080"
     environment:
       MIHOMO_API_URL: "http://mihomo:9090"
-      MIHOMO_SECRET: "请改成与 Mihomo 配置一致的密钥"
+      MIHOMO_SECRET: "${MIHOMO_SECRET:-}"
       MIHOMO_CONFIG_PATH: "/config/config.yaml"
       MIHOMO_RELOAD_PATH: "/root/.config/mihomo/config.yaml"
     volumes:

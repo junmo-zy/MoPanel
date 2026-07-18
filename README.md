@@ -1,97 +1,239 @@
 # MoPanel
 
-一个面向 Docker 场景的轻量 Mihomo Web 控制面板。操作习惯接近 Clash Verge，只保留日常需要的状态、代理、配置、连接、日志和基础设置。
+MoPanel 是一个面向 Docker / NAS 的轻量代理控制面板，连接 Mihomo 的外部控制器后，提供接近 Clash Verge 的日常操作：查看状态、切换代理模式和节点、测速、管理订阅提供者、查看连接与日志，以及常用核心设置。
 
-## 功能
+它只管理 Mihomo，不会修改宿主机系统代理。
 
-- 概览：核心状态、规则/全局/直连、当前路由、实时流量与连接数
-- 代理：代理组、节点切换、单节点与全部延迟测试
-- 配置：添加、编辑、删除 `proxy-providers`，以及立即更新已加载的提供者
-- 连接：搜索、查看、关闭单个或全部活动连接
-- 日志：通过 Mihomo WebSocket 实时查看日志
-- 设置：混合端口、局域网访问、IPv6 等常用核心参数
-- 外观：macOS 风格玻璃窗口、三张内置壁纸、自定义 JPG/PNG/WebP、模糊度与遮罩调节
-- 同源代理：Mihomo 密钥只保留在服务端容器环境变量中，不下发到浏览器
+## 适用场景
 
-## Mihomo 配置
+- NAS、Docker Desktop、Linux 服务器上已经运行或准备运行 Mihomo。
+- 希望用浏览器管理代理，而不是使用 MetaCubeXD 这类高密度面板。
+- 希望保留 Mihomo 原生配置与订阅，并能从界面管理 `proxy-providers`。
 
-控制面板需要访问 Mihomo 外部控制器。确保 `config.yaml` 至少包含：
+## 部署前准备
 
-```yaml
-external-controller: 0.0.0.0:9090
-secret: "换成你自己的强密钥"
-```
+1. 已安装 Docker Engine / Docker Desktop / NAS 的 Container Manager，并支持 Docker Compose。
+2. 准备一个可读写的 Mihomo 配置目录，至少包含 `config.yaml`。
+3. 在 `config.yaml` 中启用外部控制器。示例：
 
-不要把 `9090` 控制器端口直接暴露到公网，让 Mihomo 与本面板加入同一个 Docker 网络即可。
+   ```yaml
+   mixed-port: 7890
+   mode: rule
+   external-controller: 0.0.0.0:9090
+   secret: "替换为一段你自己的强密钥"
+   ```
 
-## Docker 启动
+   `secret` 可以留空，但 MoPanel 和 Mihomo 两边的值必须一致。
 
-1. 复制示例文件并修改 Mihomo 控制器密钥：
+> 不要把 `9090` 暴露到公网。MoPanel 只需要通过 Docker 内部网络访问它。
+
+## 快速开始：MoPanel 与 Mihomo 一起部署
+
+以下方式适合第一次安装，或希望由同一份 Compose 同时管理 MoPanel 和 Mihomo。
+
+1. 获取项目代码并进入目录：
 
    ```bash
+   git clone https://github.com/junmo-zy/MoPanel.git
+   cd MoPanel
+   ```
+
+   仓库目前为私有仓库；如果 NAS 没有 GitHub 登录能力，请从 GitHub 下载源码 ZIP 后解压到 NAS 的 Docker 目录。
+
+2. 创建本地环境文件和 Compose 文件：
+
+   ```bash
+   cp .env.example .env
    cp compose.example.yml compose.yml
    ```
 
-2. 把 Mihomo 配置放在 `./config/config.yaml`。如果实际文件名或容器路径不同，同时修改：
+3. 编辑 `.env`，填写当前 NAS 用户的 UID/GID，以及与 `config.yaml` 相同的密钥：
 
-   - `MIHOMO_CONFIG_PATH`：面板容器看到的配置文件路径
-   - `MIHOMO_RELOAD_PATH`：Mihomo 容器看到的同一份配置文件路径
+   ```dotenv
+   PUID=1000
+   PGID=1000
+   MIHOMO_SECRET=替换为与config.yaml相同的密钥
+   ```
 
-3. 确保 `./config` 对 compose 中的 `PUID/PGID` 可写。默认使用 `1000:1000`；也可在 `.env` 中覆盖。
+   在普通 Linux / NAS 终端中可用 `id -u` 和 `id -g` 查询 UID、GID。若 NAS 的 Compose 图形界面不支持 `.env`，直接在项目环境变量中填写同名变量即可。
 
-4. 构建并启动：
+4. 创建 `config/config.yaml`，写入你的 Mihomo 配置、订阅和代理组。至少保留上文的 `external-controller` 与 `secret` 配置。`config/` 必须以**目录**形式可读写且持久化挂载，不能只挂单个 `config.yaml`，也不要将它改为 `:ro`：MoPanel 会在其中保存 `.mihomo-mini/auto-groups.json` 与 `settings.json` 等面板元数据。
+
+5. 构建并启动：
 
    ```bash
    docker compose up -d --build
    ```
 
-5. 打开 `http://你的服务器地址:1224`。进入“配置”即可直接增删改代理提供者。
+6. 打开：`http://NAS_IP:1224`
 
-如果 Mihomo 已由另一份 compose 管理，请删除示例中的 `mihomo` 服务，让两个容器加入同一个 `mihomo-net`，并把同一个配置目录分别挂载到两个容器。
+   例如：`http://192.168.1.20:1224`。
 
-## 配置管理的安全行为
+7. 检查状态：
 
-- 接口只允许管理 `proxy-providers`，不提供任意文件读取或写入能力
-- 配置管理不设浏览器侧解锁口令；请只将面板暴露给可信网络
-- 名称修改会同步更新 `proxy-groups[].use` 引用；删除会移除对应引用
-- 危险相对路径和重复缓存路径会在写盘前拒绝
-- 每次保存先写配置再要求 Mihomo 强制重载；重载失败会自动恢复原文件
-- 面板未设置 `MIHOMO_CONFIG_PATH` 时，配置管理保持禁用
+   ```bash
+   docker compose ps
+   docker compose logs -f mopanel
+   ```
 
-配置页只编辑常用字段；已有的 `header`、`override` 等高级字段会原样保留。
+MoPanel 的健康检查地址是 `http://NAS_IP:1224/health`，它只说明面板服务正在运行；请以页面右上角“已连接”状态，或下列命令确认 Mihomo 控制器也可访问：
 
-壁纸偏好保存在浏览器本地；自定义图片本体写入 IndexedDB，不会上传到面板服务端。单张自定义壁纸上限为 16 MB。
+```bash
+curl http://NAS_IP:1224/api/mihomo/version
+```
+
+## 已有 Mihomo 时：只部署 MoPanel
+
+如果 Mihomo 已经由另一份 Compose 管理，请不要再启动 `compose.example.yml` 中的 `mihomo` 服务。新建一个只包含 MoPanel 的 `compose.yml`，并确保两个容器加入同一个 Docker 网络：
+
+```yaml
+services:
+  mopanel:
+    build: .
+    image: mopanel:local
+    container_name: mopanel
+    restart: unless-stopped
+    user: "${PUID:-1000}:${PGID:-1000}"
+    ports:
+      - "1224:8080"
+    environment:
+      # "mihomo" 应替换为核心容器在该网络中的服务名或网络别名。
+      MIHOMO_API_URL: "http://mihomo:9090"
+      MIHOMO_SECRET: "${MIHOMO_SECRET:-}"
+      # 面板看到的配置路径：必须可读写。
+      MIHOMO_CONFIG_PATH: "/config/config.yaml"
+      # Mihomo 容器内部看到的同一份文件路径。
+      MIHOMO_RELOAD_PATH: "/root/.config/mihomo/config.yaml"
+    volumes:
+      - "${MIHOMO_CONFIG_DIR}:/config"
+    networks:
+      - mihomo-net
+
+networks:
+  mihomo-net:
+    external: true
+```
+
+对应的 `.env` 示例：
+
+```dotenv
+PUID=1000
+PGID=1000
+MIHOMO_SECRET=替换为与config.yaml相同的密钥
+MIHOMO_CONFIG_DIR=/volume1/docker/mihomo/config
+```
+
+启动前，确认外部网络已经存在，而且 Mihomo 核心已加入其中。若核心 Compose 尚未创建它，可先执行：
+
+```bash
+docker network create mihomo-net
+```
+
+如果核心使用的是其他网络名，请同时替换 Compose 中的 `mihomo-net` 和 `MIHOMO_API_URL` 主机名。
+
+关键点：
+
+- `mihomo-net` 必须是核心容器已加入的 Docker 网络。可用 `docker network ls` 查看。
+- `MIHOMO_API_URL` 的主机名必须是核心容器在该网络中的名称，不能填 NAS 的公网地址。
+- `MIHOMO_CONFIG_PATH` 与 `MIHOMO_RELOAD_PATH` 指向的是同一份 `config.yaml`，但分别使用面板容器和 Mihomo 容器所见的路径。
+- 配置目录挂载必须可读写且持久化；MoPanel 会在其 `.mihomo-mini/` 子目录保存自动组和测速设置。若核心容器与面板使用不同 UID/GID，目录权限必须同时允许两者写入。
+- 当前本地部署中的 Mihomo 使用 `/app/config/config.yaml` 启动，同时通过链接将 `/root/.config/mihomo/config.yaml` 指向该文件；这种部署请保持 `MIHOMO_RELOAD_PATH=/root/.config/mihomo/config.yaml`。如果重建核心容器时删除了保存此链接的卷（例如 `docker compose down -v`），需重新创建该链接后再使用配置保存功能。
+
+## 日常使用
+
+### 1. 概览：先确认代理模式和当前代理
+
+概览页顶部是最重要的操作区：
+
+- **规则**：流量按 Mihomo 规则处理，实际使用 `PROXY` 代理组。
+- **全局**：所有需要代理的流量使用 `GLOBAL` 代理组。
+- **直连**：不经过代理，当前代理显示为 `DIRECT`。
+
+“当前代理”会展示当前模式实际生效的代理组和节点，而不是固定显示列表中的第一个代理组。
+
+### 2. 代理：选择代理组与节点
+
+进入“代理”页后：
+
+1. 找到规则模式常用的 `PROXY` 组，或全局模式常用的 `GLOBAL` 组。
+2. 点击代理组，查看它可选择的节点或下级代理组。
+3. 对 **Selector** 代理组，可以手动选择节点。
+4. 对 **URLTest / url-test** 与 **Fallback** 自动组，只能查看和测速；它们会根据测速结果或可用性自动决定节点，不需要手动固定。
+
+### 3. 测速：先设置地址，再全部测速
+
+在“设置”页填写测速地址，例如：
+
+```text
+https://www.gstatic.com/generate_204
+```
+
+然后在“代理”页或切换节点弹窗中使用“全部测速”。MoPanel 会调用 Mihomo 的延迟测试接口，测试结果会显示在节点列表中；自动组也会根据测试结果更新当前节点。
+
+### 4. 订阅：管理代理提供者
+
+“订阅”页用于管理 `proxy-providers`：
+
+- 添加 HTTP / 文件类型提供者。
+- 编辑名称、订阅地址、更新间隔和常用字段。
+- 删除不需要的提供者。
+- 手动更新已加载的订阅。
+
+表单只编辑常用字段；原配置中未暴露的高级 YAML 字段会被保留。保存后，MoPanel 会写入 `config.yaml` 并请求 Mihomo 重载。
+
+### 5. 设置：网络、外观与测速地址
+
+“设置”页可调整混合端口、局域网访问、IPv6、测速地址、壁纸、模糊度和明暗模式。壁纸与外观偏好只保存在当前浏览器，不会上传到服务器。
+
+## 更新 MoPanel
+
+当前仓库发布的是源码，Compose 会在 NAS 上构建镜像。更新方式：
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+如果你是从 ZIP 部署，请下载新版本后覆盖项目文件，再执行第二行命令。`config/`、`.env`、订阅和面板元数据均已被 Git 忽略，不会被提交到仓库。
+
+## 环境变量
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `PORT` | `8080` | 面板容器内部监听端口。 |
+| `MIHOMO_API_URL` | `http://mihomo:9090` | Mihomo 外部控制器的 Docker 内部地址。 |
+| `MIHOMO_SECRET` | 空 | 与 Mihomo `secret` 完全一致；它是面板访问控制器的鉴权密钥，不是面板网页登录密码。 |
+| `MIHOMO_CONFIG_PATH` | 空 | 面板容器内可读写的 `config.yaml` 路径；为空时订阅管理会禁用。 |
+| `MIHOMO_RELOAD_PATH` | `MIHOMO_CONFIG_PATH` | Mihomo 容器内用于配置重载的同一文件路径。 |
+| `PUID` / `PGID` | `1000` | Compose 示例中用于让面板拥有配置目录写入权限。 |
+| `MIHOMO_CONFIG_DIR` | 无 | 仅“已有 Mihomo”示例使用，指向 NAS 上的配置目录。 |
+
+## 常见问题
+
+| 现象 | 排查方式 |
+| --- | --- |
+| 面板显示“无法连接 Mihomo” | 检查 `MIHOMO_API_URL` 是否使用同一 Docker 网络里的核心容器名；确认 `external-controller` 已启用，`MIHOMO_SECRET` 与配置一致。 |
+| 添加或编辑订阅后提示重载路径错误 | 确认两容器挂载的是同一配置目录，且 `MIHOMO_RELOAD_PATH` 是 Mihomo 容器实际可访问的路径。 |
+| 配置保存失败或没有写入权限 | 检查 NAS 配置目录的属主；将 `.env` 中的 `PUID`、`PGID` 改成目录所属用户。 |
+| `1224` 端口无法启动 | 修改 Compose 的 `1224:8080` 左侧端口，例如 `18080:8080`，然后访问新端口。 |
+| 节点延迟始终为空 | 在“设置”中填写可访问的 HTTP/HTTPS 测速地址，再执行“全部测速”。 |
+
+## 安全建议
+
+- MoPanel 可以读取配置、修改订阅和触发 Mihomo 重载，建议只在局域网、Tailscale 或带认证的反向代理后使用。
+- 不要把 `1224` 和 Mihomo 控制器端口 `9090` 直接端口映射到公网。
+- 不要把 `.env`、`config.yaml`、订阅链接或代理节点提交到 GitHub。项目的 `.gitignore` 已默认排除这些文件。
 
 ## 本地开发
-
-普通界面开发：
 
 ```bash
 npm install
 npm run dev
 ```
 
-Vite 开发服务会把 `/api/mihomo` 转发到 `MIHOMO_API_URL`。完整的 YAML 配置管理由 Node 服务提供，需先构建再运行：
+完整的配置管理由 Node 服务提供：
 
 ```bash
 npm run build
-MIHOMO_API_URL=http://127.0.0.1:9090 \
-MIHOMO_SECRET=你的密钥 \
-MIHOMO_CONFIG_PATH=/绝对路径/config.yaml \
-MIHOMO_RELOAD_PATH=/mihomo/看到的/config.yaml \
 npm start
 ```
-
-PowerShell 请用 `$env:变量名="值"` 的形式设置环境变量。
-
-## 环境变量
-
-| 变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `PORT` | `8080` | 面板容器监听端口 |
-| `MIHOMO_API_URL` | `http://mihomo:9090` | Mihomo 外部控制器地址 |
-| `MIHOMO_SECRET` | 空 | 与 Mihomo `secret` 一致 |
-| `MIHOMO_CONFIG_PATH` | 空 | 面板容器内可读写的 `config.yaml` 路径 |
-| `MIHOMO_RELOAD_PATH` | `MIHOMO_CONFIG_PATH` | Mihomo 容器内用于重载的配置路径 |
-
-控制器不可达时，界面会明确显示演示数据，方便先检查布局和操作。
