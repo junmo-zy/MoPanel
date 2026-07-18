@@ -186,10 +186,22 @@ label[role="button"]:focus-visible {
   user-select: none;
 }
 
-.window-titlebar > strong {
+.window-titlebar > .product-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   font-size: 13px;
   font-weight: 650;
   letter-spacing: -0.01em;
+}
+
+.product-brand img {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  border-radius: 6px;
+  object-fit: cover;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 18%);
 }
 
 .window-controls {

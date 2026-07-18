@@ -67,10 +67,12 @@ afterEach(() => {
 
 describe("Control panel shell", () => {
   it("shows the selected overview layout and primary controls", () => {
-    render(<App />);
+    const { container } = render(<App />);
 
     expect(screen.getByRole("heading", { name: "代理服务运行正常" })).toBeInTheDocument();
-    expect(screen.getByText("MoPanel", { selector: ".window-titlebar strong" })).toBeInTheDocument();
+    expect(container.querySelector(".product-brand")).toHaveTextContent("MoPanel");
+    expect(container.querySelector(".product-brand img")).toHaveAttribute("src", "/brand/mopanel-cat.png");
+    expect(container.querySelector(".product-brand img")).toHaveAttribute("alt", "");
     expect(screen.getByRole("button", { name: "规则" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "更换代理" })).toBeInTheDocument();
     expect(screen.getByText("自动选择")).toBeInTheDocument();

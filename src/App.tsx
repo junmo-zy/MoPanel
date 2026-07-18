@@ -310,7 +310,10 @@ function AppContent({ client, providerManager, autoGroupManager, panelSettingsCl
           <div className="window-controls" aria-label="窗口控制">
             <span className="window-close" /><span className="window-minimize" /><span className="window-zoom" />
           </div>
-          <strong>MoPanel</strong>
+          <strong className="product-brand">
+            <img src="/brand/mopanel-cat.png" alt="" width={20} height={20} />
+            <span>MoPanel</span>
+          </strong>
           <span className="window-status" data-state={connectionState} aria-live="polite"><i aria-hidden="true" />{connectionLabel}</span>
         </header>
         <div className="app-shell">
