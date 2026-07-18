@@ -10,6 +10,27 @@ MoPanel 是一个面向 Docker / NAS 的轻量代理控制面板，连接 Mihomo
 - 希望用浏览器管理代理，而不是使用 MetaCubeXD 这类高密度面板。
 - 希望保留 Mihomo 原生配置与订阅，并能从界面管理 `proxy-providers`。
 
+## 公开镜像：推荐 NAS 直接拉取
+
+MoPanel 已发布为公开的多架构镜像，无需在 NAS 本地构建：
+
+```text
+ghcr.io/junmo-zy/mopanel:latest
+```
+
+镜像同时支持 `linux/amd64` 与 `linux/arm64`。在已存在 Mihomo 的 NAS 上，优先复制 [`compose.ghcr.example.yml`](./compose.ghcr.example.yml) 为 `compose.yml`，按实际环境调整下面三项：
+
+- `MIHOMO_API_URL`：Mihomo 外部控制器地址；若通过 NAS 映射端口访问，保留 `http://host.docker.internal:19090`。
+- `MIHOMO_SECRET`：与 `config.yaml` 的 `secret` 完全一致；未设置 `secret` 时保持为空。
+- `/volume1/docker/mihomo/config:/config`：替换成包含 `config.yaml` 的 NAS 绝对路径。
+
+启动或更新只需拉取镜像：
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
 ## 部署前准备
 
 1. 已安装 Docker Engine / Docker Desktop / NAS 的 Container Manager，并支持 Docker Compose。
@@ -27,9 +48,9 @@ MoPanel 是一个面向 Docker / NAS 的轻量代理控制面板，连接 Mihomo
 
 > 不要把 `9090` 暴露到公网。MoPanel 只需要通过 Docker 内部网络访问它。
 
-## 快速开始：MoPanel 与 Mihomo 一起部署
+## 源码构建：MoPanel 与 Mihomo 一起部署
 
-以下方式适合第一次安装，或希望由同一份 Compose 同时管理 MoPanel 和 Mihomo。
+以下方式适合希望修改源码，或希望由同一份 Compose 同时管理 MoPanel 和 Mihomo 的情况。NAS 日常部署优先使用上方的公开镜像。
 
 1. 获取项目代码并进入目录：
 
@@ -38,7 +59,7 @@ MoPanel 是一个面向 Docker / NAS 的轻量代理控制面板，连接 Mihomo
    cd MoPanel
    ```
 
-   仓库目前为私有仓库；如果 NAS 没有 GitHub 登录能力，请从 GitHub 下载源码 ZIP 后解压到 NAS 的 Docker 目录。
+   仓库为公开仓库；如果 NAS 没有 Git，可从 GitHub 下载源码 ZIP 后解压到 NAS 的 Docker 目录。
 
 2. 创建本地环境文件和 Compose 文件：
 
@@ -82,36 +103,29 @@ MoPanel 的健康检查地址是 `http://NAS_IP:1224/health`，它只说明面�
 curl http://NAS_IP:1224/api/mihomo/version
 ```
 
-## 已有 Mihomo 时：只部署 MoPanel
+## 已有 Mihomo 时：单独部署 MoPanel
 
-如果 Mihomo 已经由另一份 Compose 管理，请不要再启动 `compose.example.yml` 中的 `mihomo` 服务。新建一个只包含 MoPanel 的 `compose.yml`，并确保两个容器加入同一个 Docker 网络：
+如果 Mihomo 已经由另一份 Compose 或 NAS 可视化面板管理，请不要再启动 `compose.example.yml` 中的 `mihomo` 服务。推荐创建一份独立的 MoPanel Compose，直接拉取公开镜像：
 
 ```yaml
 services:
   mopanel:
-    build: .
-    image: mopanel:local
+    image: ghcr.io/junmo-zy/mopanel:latest
     container_name: mopanel
     restart: unless-stopped
     user: "${PUID:-1000}:${PGID:-1000}"
     ports:
       - "1224:8080"
     environment:
-      # "mihomo" 应替换为核心容器在该网络中的服务名或网络别名。
-      MIHOMO_API_URL: "http://mihomo:9090"
+      # 使用 Mihomo 已映射到 NAS 的控制器端口。
+      MIHOMO_API_URL: "http://host.docker.internal:19090"
       MIHOMO_SECRET: "${MIHOMO_SECRET:-}"
-      # 面板看到的配置路径：必须可读写。
       MIHOMO_CONFIG_PATH: "/config/config.yaml"
-      # Mihomo 容器内部看到的同一份文件路径。
       MIHOMO_RELOAD_PATH: "/root/.config/mihomo/config.yaml"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - "${MIHOMO_CONFIG_DIR}:/config"
-    networks:
-      - mihomo-net
-
-networks:
-  mihomo-net:
-    external: true
 ```
 
 对应的 `.env` 示例：
@@ -123,21 +137,14 @@ MIHOMO_SECRET=替换为与config.yaml相同的密钥
 MIHOMO_CONFIG_DIR=/volume1/docker/mihomo/config
 ```
 
-启动前，确认外部网络已经存在，而且 Mihomo 核心已加入其中。若核心 Compose 尚未创建它，可先执行：
-
-```bash
-docker network create mihomo-net
-```
-
-如果核心使用的是其他网络名，请同时替换 Compose 中的 `mihomo-net` 和 `MIHOMO_API_URL` 主机名。
-
 关键点：
 
-- `mihomo-net` 必须是核心容器已加入的 Docker 网络。可用 `docker network ls` 查看。
-- `MIHOMO_API_URL` 的主机名必须是核心容器在该网络中的名称，不能填 NAS 的公网地址。
-- `MIHOMO_CONFIG_PATH` 与 `MIHOMO_RELOAD_PATH` 指向的是同一份 `config.yaml`，但分别使用面板容器和 Mihomo 容器所见的路径。
+- 不要填写 `build: .` 或 `image: mopanel:latest`；必须使用完整镜像名 `ghcr.io/junmo-zy/mopanel:latest`。
+- `host.docker.internal` 通过 `extra_hosts` 映射为 NAS 宿主机，因此不需要将两份 Compose 合并到同一个 Docker 网络。
+- 如果 NAS 的 Docker 版本不支持 `host-gateway`，将 `MIHOMO_API_URL` 改为 `http://NAS_LAN_IP:19090`。
+- `MIHOMO_CONFIG_PATH` 与 `MIHOMO_RELOAD_PATH` 指向同一份 `config.yaml`，但分别使用面板容器和 Mihomo 容器所见的路径。
 - 配置目录挂载必须可读写且持久化；MoPanel 会在其 `.mihomo-mini/` 子目录保存自动组和测速设置。若核心容器与面板使用不同 UID/GID，目录权限必须同时允许两者写入。
-- 当前本地部署中的 Mihomo 使用 `/app/config/config.yaml` 启动，同时通过链接将 `/root/.config/mihomo/config.yaml` 指向该文件；这种部署请保持 `MIHOMO_RELOAD_PATH=/root/.config/mihomo/config.yaml`。如果重建核心容器时删除了保存此链接的卷（例如 `docker compose down -v`），需重新创建该链接后再使用配置保存功能。
+- 若 Mihomo 以 `/app/config/config.yaml` 启动，需通过 NAS 可视化面板为它额外挂载同一个配置目录到 `/root/.config/mihomo`，这样配置保存后才能成功热重载。
 
 ## 日常使用
 
@@ -187,14 +194,21 @@ https://www.gstatic.com/generate_204
 
 ## 更新 MoPanel
 
-当前仓库发布的是源码，Compose 会在 NAS 上构建镜像。更新方式：
+使用公开镜像部署时，更新方式：
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+如使用源码构建方式，则执行：
 
 ```bash
 git pull
 docker compose up -d --build
 ```
 
-如果你是从 ZIP 部署，请下载新版本后覆盖项目文件，再执行第二行命令。`config/`、`.env`、订阅和面板元数据均已被 Git 忽略，不会被提交到仓库。
+`config/`、`.env`、订阅和面板元数据均已被 Git 忽略，不会被提交到仓库。
 
 ## 环境变量
 

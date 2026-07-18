@@ -3,6 +3,7 @@ services:
     image: ghcr.io/junmo-zy/mopanel:latest
     container_name: mopanel
     restart: unless-stopped
+    user: "${PUID:-1000}:${PGID:-1000}"
     ports:
       - "1224:8080"
     environment:
