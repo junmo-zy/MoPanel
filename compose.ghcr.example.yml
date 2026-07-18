@@ -1,0 +1,18 @@
+services:
+  mopanel:
+    image: ghcr.io/junmo-zy/mopanel:latest
+    container_name: mopanel
+    restart: unless-stopped
+    ports:
+      - "1224:8080"
+    environment:
+      # Replace this if your Mihomo controller is reachable through a dedicated Docker network.
+      MIHOMO_API_URL: "http://host.docker.internal:19090"
+      MIHOMO_SECRET: "${MIHOMO_SECRET:-}"
+      MIHOMO_CONFIG_PATH: "/config/config.yaml"
+      MIHOMO_RELOAD_PATH: "/root/.config/mihomo/config.yaml"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # Replace this absolute host path with the directory that contains config.yaml.
+      - /volume1/docker/mihomo/config:/config
