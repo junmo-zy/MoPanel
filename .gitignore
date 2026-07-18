@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.npm-cache/
+*.log
+screenshots/
+design-qa.md
+.env
+.env.*
+!.env.example
+config/
+.mihomo-mini/
+.mopanel/

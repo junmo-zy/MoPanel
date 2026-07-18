@@ -1,0 +1,36 @@
+services:
+  mopanel:
+    build: .
+    image: mopanel:local
+    container_name: mopanel
+    restart: unless-stopped
+    # 建议与宿主机 config 目录的属主保持一致。
+    user: "${PUID:-1000}:${PGID:-1000}"
+    ports:
+      - "1224:8080"
+    environment:
+      MIHOMO_API_URL: "http://mihomo:9090"
+      MIHOMO_SECRET: "请改成与 Mihomo 配置一致的密钥"
+      MIHOMO_CONFIG_PATH: "/config/config.yaml"
+      MIHOMO_RELOAD_PATH: "/root/.config/mihomo/config.yaml"
+    volumes:
+      # 配置管理需要读写；不要改成 :ro。
+      - ./config:/config
+    networks:
+      - mihomo-net
+
+  # 如果 Mihomo 已经由另一份 compose 管理，请删除这个服务，
+  # 再让两个容器加入同一个 mihomo-net 网络。
+  mihomo:
+    image: metacubex/mihomo:latest
+    container_name: mihomo
+    restart: unless-stopped
+    command: -d /root/.config/mihomo
+    volumes:
+      - ./config:/root/.config/mihomo
+    networks:
+      - mihomo-net
+
+networks:
+  mihomo-net:
+    name: mihomo-net
