@@ -23,6 +23,29 @@ proxy-groups:
       - DIRECT
 `;
 
+const sourceWithSubscriptions = `mixed-port: 7890
+proxy-providers:
+  airport-a:
+    type: http
+    url: https://a.example.com/sub
+    path: ./proxy_providers/a.yaml
+    interval: 3600
+  airport-b:
+    type: http
+    url: https://b.example.com/sub
+    path: ./proxy_providers/b.yaml
+    interval: 3600
+proxy-groups:
+  - name: PROXY
+    type: select
+    use:
+      - airport-a
+  - name: AUTO
+    type: url-test
+    use:
+      - airport-a
+`;
+
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
@@ -45,6 +68,14 @@ async function createAutoGroupStore() {
     metadataPath: join(root, ".mihomo-mini", "auto-groups.json"),
     store: new ProviderConfigStore(configPath),
   };
+}
+
+async function createSubscriptionStore() {
+  const root = await mkdtemp(join(tmpdir(), "mihomo-mini-"));
+  roots.push(root);
+  const configPath = join(root, "config.yaml");
+  await writeFile(configPath, sourceWithSubscriptions, "utf8");
+  return { configPath, store: new ProviderConfigStore(configPath) };
 }
 
 describe("ProviderConfigStore", () => {
@@ -250,5 +281,32 @@ describe("ProviderConfigStore", () => {
     expect(reload).toHaveBeenCalledTimes(1);
     expect(await readFile(configPath, "utf8")).toContain("airport:");
     expect(await readFile(metadataPath, "utf8")).toContain('"airport"');
+  });
+
+  it("switches the current subscription through a reload-safe config write", async () => {
+    const { configPath, store } = await createSubscriptionStore();
+    const reload = vi.fn(async () => undefined);
+
+    await expect(store.getSubscriptionState()).resolves.toEqual({
+      providers: ["airport-a", "airport-b"],
+      activeProvider: "airport-a",
+    });
+    await expect(store.selectSubscription("airport-b", reload)).resolves.toEqual({
+      providers: ["airport-a", "airport-b"],
+      activeProvider: "airport-b",
+    });
+
+    expect(await readFile(configPath, "utf8")).toContain("- airport-b");
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("restores the prior subscription when Mihomo rejects a switch", async () => {
+    const { configPath, store } = await createSubscriptionStore();
+
+    await expect(store.selectSubscription("airport-b", async () => {
+      throw new Error("reload rejected");
+    })).rejects.toThrow("reload rejected");
+
+    expect(await readFile(configPath, "utf8")).toBe(sourceWithSubscriptions);
   });
 });

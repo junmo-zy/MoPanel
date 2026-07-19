@@ -113,6 +113,35 @@ describe("provider management API", () => {
   });
 });
 
+describe("current subscription API", () => {
+  it("reads and switches the one active subscription through the shared reload callback", async () => {
+    const state = { providers: ["airport-a", "airport-b"], activeProvider: "airport-a" };
+    const reload = vi.fn(async () => undefined);
+    const store = {
+      getSubscriptionState: vi.fn(async () => state),
+      selectSubscription: vi.fn(async (_name, reloadConfig) => {
+        await reloadConfig();
+        return { ...state, activeProvider: "airport-b" };
+      }),
+    };
+    const base = await start(createProviderRouter({ store, reload }));
+
+    const get = await fetch(`${base}/active-provider`);
+    const put = await fetch(`${base}/active-provider`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "airport-b" }),
+    });
+
+    expect(get.status).toBe(200);
+    await expect(get.json()).resolves.toEqual(state);
+    expect(put.status).toBe(200);
+    await expect(put.json()).resolves.toEqual({ ...state, activeProvider: "airport-b" });
+    expect(store.selectSubscription).toHaveBeenCalledWith("airport-b", expect.any(Function));
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("managed auto-group API", () => {
   it("lists managed auto groups without a management token", async () => {
     const groups = [{

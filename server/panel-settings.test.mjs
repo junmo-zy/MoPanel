@@ -20,14 +20,26 @@ describe("PanelSettingsStore", () => {
   it("returns the default speed-test URL and persists a shared replacement beside config.yaml", async () => {
     const { root, store } = await createStore();
 
-    await expect(store.get()).resolves.toEqual({ speedTestUrl: "https://www.gstatic.com/generate_204" });
-    await expect(store.save({ speedTestUrl: "https://cp.cloudflare.com/generate_204" })).resolves.toEqual({
+    await expect(store.get()).resolves.toEqual({ speedTestUrl: "https://www.gstatic.com/generate_204", selectedProviders: null });
+    await expect(store.save({
       speedTestUrl: "https://cp.cloudflare.com/generate_204",
+      selectedProviders: ["airport-a", "airport-b"],
+    })).resolves.toEqual({
+      speedTestUrl: "https://cp.cloudflare.com/generate_204",
+      selectedProviders: ["airport-a", "airport-b"],
     });
     await expect(readFile(join(root, ".mihomo-mini", "settings.json"), "utf8")).resolves.toContain("cp.cloudflare.com");
     await expect(new PanelSettingsStore(join(root, "config.yaml")).get()).resolves.toEqual({
       speedTestUrl: "https://cp.cloudflare.com/generate_204",
+      selectedProviders: ["airport-a", "airport-b"],
     });
+  });
+
+  it("rejects invalid subscription selections instead of writing unusable filter state", async () => {
+    const { store } = await createStore();
+
+    await expect(store.save({ speedTestUrl: "https://cp.cloudflare.com", selectedProviders: ["airport", "  ", "airport"] }))
+      .rejects.toThrow("订阅选择必须是唯一的非空名称列表");
   });
 
   it("rejects invalid speed-test URLs instead of persisting them", async () => {

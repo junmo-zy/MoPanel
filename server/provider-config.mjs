@@ -491,6 +491,53 @@ export function parseManagedProviders(source) {
   }));
 }
 
+function configuredProviderNames(document) {
+  const providers = providerMap(document).toJSON();
+  return Object.keys(providers);
+}
+
+function providerNamesUsedByGroups(groups, names) {
+  const configured = new Set(names);
+  const used = [];
+  for (const group of groups) {
+    if (!Array.isArray(group?.use)) continue;
+    for (const name of group.use) {
+      if (configured.has(name) && !used.includes(name)) used.push(name);
+    }
+  }
+  return used;
+}
+
+export function getSubscriptionState(source) {
+  const document = parseYaml(source);
+  const providers = configuredProviderNames(document);
+  const activeProvider = providerNamesUsedByGroups(groupList(document), providers)[0] ?? null;
+  return { providers, activeProvider };
+}
+
+export function switchSubscriptionYaml(source, selectedProvider) {
+  const document = parseYaml(source);
+  const providers = configuredProviderNames(document);
+  const name = trimmed(selectedProvider);
+  if (!providers.includes(name)) {
+    throw new ProviderConfigError("所选订阅不在当前配置中", "ACTIVE_PROVIDER_NOT_FOUND");
+  }
+
+  const configured = new Set(providers);
+  const groups = groupList(document);
+  let changed = false;
+  for (let index = 0; index < groups.length; index += 1) {
+    const group = groups[index];
+    if (!Array.isArray(group?.use) || !group.use.some((item) => configured.has(item))) continue;
+    const nextUse = [...new Set(group.use.map((item) => (configured.has(item) ? name : item)))];
+    if (sameStringArray(group.use, nextUse)) continue;
+    groups[index] = { ...group, use: nextUse };
+    changed = true;
+  }
+  if (changed) setGroupList(document, groups);
+  return document.toString({ lineWidth: 0 });
+}
+
 export function mutateProviderYaml(source, change) {
   const document = parseYaml(source);
   const providers = providerMap(document);

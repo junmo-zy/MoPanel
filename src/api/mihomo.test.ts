@@ -89,7 +89,7 @@ describe("Mihomo API client", () => {
           current: "美国 03",
           delay: 95,
           nodes: [
-            { name: "香港 01", type: "VLESS", delay: 42, alive: true },
+            { name: "香港 01", type: "VLESS", delay: 42, alive: true, provider: "机场订阅" },
             { name: "美国 03", type: "Trojan", delay: 95, alive: true, provider: "机场订阅" },
           ],
         },

@@ -65,8 +65,10 @@ function indexProviderNodes(providers: Record<string, RawProvider>): Map<string,
 function mapGroups(proxies: Record<string, RawProxy>, providers: Record<string, RawProvider>): ProxyGroup[] {
   const providerNodes = indexProviderNodes(providers);
   const resolveNode = (name: string): ProviderNode | undefined => {
+    const providerNode = providerNodes.get(name);
     const proxy = proxies[name];
-    return proxy ? { proxy } : providerNodes.get(name);
+    if (providerNode) return { proxy: proxy || providerNode.proxy, provider: providerNode.provider };
+    return proxy ? { proxy } : undefined;
   };
 
   return Object.entries(proxies)

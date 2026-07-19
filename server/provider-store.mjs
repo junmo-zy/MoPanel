@@ -2,11 +2,13 @@ import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
   createAutoGroupMetadata,
+  getSubscriptionState,
   mutateAutoGroupYaml,
   mutateProviderYaml,
   parseManagedAutoGroups,
   parseManagedProviders,
   ProviderConfigError,
+  switchSubscriptionYaml,
 } from "./provider-config.mjs";
 
 function trimmed(value) {
@@ -36,6 +38,10 @@ export class ProviderConfigStore {
     return parseManagedProviders(await readFile(this.#configPath, "utf8"));
   }
 
+  async getSubscriptionState() {
+    return getSubscriptionState(await readFile(this.#configPath, "utf8"));
+  }
+
   async listAutoGroups() {
     const [source, metadataFile] = await Promise.all([
       readFile(this.#configPath, "utf8"),
@@ -50,6 +56,10 @@ export class ProviderConfigStore {
 
   applyAutoGroup(change, reload) {
     return this.#enqueue(() => this.#applyAutoGroup(change, reload));
+  }
+
+  selectSubscription(name, reload) {
+    return this.#enqueue(() => this.#selectSubscription(name, reload));
   }
 
   #enqueue(work) {
@@ -137,6 +147,19 @@ export class ProviderConfigStore {
       throw error;
     }
     return parseManagedProviders(next);
+  }
+
+  async #selectSubscription(name, reload) {
+    const original = await readFile(this.#configPath, "utf8");
+    const next = switchSubscriptionYaml(original, name);
+    await this.#replace(this.#configPath, next);
+    try {
+      await reload();
+    } catch (error) {
+      await this.#replace(this.#configPath, original);
+      throw error;
+    }
+    return getSubscriptionState(next);
   }
 
   async #applyAutoGroup(change, reload) {

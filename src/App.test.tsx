@@ -3,6 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import type { AutoGroupManagerClient, ManagedAutoGroup } from "./api/auto-group-manager";
+import type { ActiveProviderClient } from "./api/active-provider";
+import type { ProviderManagerClient } from "./api/provider-manager";
 import type { MihomoClient, OverviewData } from "./api/types";
 
 const overview: OverviewData = {
@@ -131,6 +133,25 @@ describe("Control panel shell", () => {
     expect(container.querySelector(".current-proxy strong")).toHaveTextContent("polled-auto · node-latest");
   });
 
+  it("retries after an initial controller failure and replaces demo data when it recovers", async () => {
+    vi.useFakeTimers();
+    const client = createFakeClient();
+    client.getOverview = vi.fn()
+      .mockRejectedValueOnce(new Error("controller is starting"))
+      .mockResolvedValueOnce(overview);
+    const TestApp = App as React.ComponentType<{ client: MihomoClient }>;
+    const { container } = render(<TestApp client={client} />);
+
+    await act(async () => { await Promise.resolve(); });
+    expect(client.getOverview).toHaveBeenCalledTimes(1);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(8_000); });
+
+    expect(client.getOverview).toHaveBeenCalledTimes(2);
+    expect(container.querySelector(".window-status")).toHaveTextContent("已连接");
+    expect(container.querySelector(".demo-badge")).not.toBeInTheDocument();
+  });
+
   it("shows a disconnected titlebar state when the proxy service reports no controller connection", async () => {
     const client = createFakeClient();
     client.getOverview = vi.fn(async () => ({ ...overview, connected: false }));
@@ -162,8 +183,8 @@ describe("Control panel shell", () => {
     const user = userEvent.setup();
     const client = createFakeClient();
     const panelSettingsClient = {
-      get: vi.fn(async () => ({ speedTestUrl: "https://www.gstatic.com/generate_204" })),
-      save: vi.fn(async (speedTestUrl: string) => ({ speedTestUrl })),
+      get: vi.fn(async () => ({ speedTestUrl: "https://www.gstatic.com/generate_204", selectedProviders: null })),
+      save: vi.fn(async (settings: { speedTestUrl: string; selectedProviders: string[] | null }) => settings),
     };
     render(<App client={client} panelSettingsClient={panelSettingsClient} />);
 
@@ -184,8 +205,8 @@ describe("Control panel shell", () => {
     const user = userEvent.setup();
     const client = createFakeClient();
     const panelSettingsClient = {
-      get: vi.fn(async () => ({ speedTestUrl: "https://cp.cloudflare.com/generate_204" })),
-      save: vi.fn(async (speedTestUrl: string) => ({ speedTestUrl })),
+      get: vi.fn(async () => ({ speedTestUrl: "https://cp.cloudflare.com/generate_204", selectedProviders: null })),
+      save: vi.fn(async (settings: { speedTestUrl: string; selectedProviders: string[] | null }) => settings),
     };
 
     render(<App client={client} {...{ panelSettingsClient }} />);
@@ -193,6 +214,77 @@ describe("Control panel shell", () => {
     await waitFor(() => expect(panelSettingsClient.get).toHaveBeenCalledTimes(1));
     await user.click(screen.getByRole("button", { name: "设置" }));
     await screen.findByDisplayValue("https://cp.cloudflare.com/generate_204");
+  });
+
+  it("switches one configured subscription and refreshes proxy nodes from Mihomo", async () => {
+    const user = userEvent.setup();
+    const selectedOverview: OverviewData = {
+      ...overview,
+      providers: [
+        { name: "订阅 A", vehicleType: "HTTP", updatedAt: null, proxyCount: 1 },
+        { name: "订阅 B", vehicleType: "HTTP", updatedAt: null, proxyCount: 1 },
+        { name: "PROXY", vehicleType: "Compatible", updatedAt: null, proxyCount: 2 },
+      ],
+      providerNodes: [
+        { provider: "订阅 A", name: "节点 A", type: "VLESS", delay: 35, alive: true },
+        { provider: "订阅 B", name: "节点 B", type: "Trojan", delay: 72, alive: true },
+      ],
+      groups: [{
+        name: "PROXY",
+        type: "Selector",
+        current: "节点 A",
+        delay: 35,
+        nodes: [
+          { provider: "订阅 A", name: "节点 A", type: "VLESS", delay: 35, alive: true },
+          { name: "DIRECT", type: "Direct", delay: null, alive: true },
+        ],
+      }],
+    };
+    const switchedOverview: OverviewData = {
+      ...selectedOverview,
+      providerNodes: [{ provider: "订阅 B", name: "节点 B", type: "Trojan", delay: 72, alive: true }],
+      groups: [{
+        ...selectedOverview.groups[0],
+        current: "节点 B",
+        delay: 72,
+        nodes: [
+          { provider: "订阅 B", name: "节点 B", type: "Trojan", delay: 72, alive: true },
+          { name: "DIRECT", type: "Direct", delay: null, alive: true },
+        ],
+      }],
+    };
+    const client = createFakeClient();
+    client.getOverview = vi.fn()
+      .mockResolvedValueOnce(selectedOverview)
+      .mockResolvedValueOnce(switchedOverview);
+    const activeProviderClient: ActiveProviderClient = {
+      get: vi.fn(async () => ({ providers: ["订阅 A", "订阅 B"], activeProvider: "订阅 A" })),
+      select: vi.fn(async () => ({ providers: ["订阅 A", "订阅 B"], activeProvider: "订阅 B" })),
+    };
+    const providerManager: ProviderManagerClient = {
+      list: vi.fn(async () => []),
+      create: vi.fn(async () => []),
+      update: vi.fn(async () => []),
+      remove: vi.fn(async () => []),
+    };
+
+    render(<App client={client} providerManager={providerManager} activeProviderClient={activeProviderClient} />);
+
+    await user.click(screen.getByRole("button", { name: "订阅" }));
+    expect(await screen.findByRole("button", { name: "选择订阅 订阅 A" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "选择订阅 订阅 B" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByText("Compatible · 2 个节点")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "选择订阅 订阅 B" }));
+
+    await waitFor(() => expect(activeProviderClient.select).toHaveBeenCalledWith("订阅 B"));
+    await waitFor(() => expect(client.getOverview).toHaveBeenCalledTimes(2));
+
+    await user.click(screen.getByRole("button", { name: "代理" }));
+    await user.click(screen.getByRole("button", { name: "查看 PROXY" }));
+
+    expect(screen.getByRole("button", { name: "节点 B 72 ms" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "节点 A 35 ms" })).not.toBeInTheDocument();
   });
 
   it("opens the focused proxy, profile, connection, log, and settings pages", async () => {

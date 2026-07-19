@@ -10,6 +10,7 @@ import { SettingsPage } from "./components/SettingsPage";
 import type { ProviderConfigurationChange } from "./components/ManagedProvidersPanel";
 import { createAutoGroupManagerClient, type AutoGroupManagerClient } from "./api/auto-group-manager";
 import { createProviderManagerClient, type ProviderManagerClient } from "./api/provider-manager";
+import { createActiveProviderClient, type ActiveProviderClient, type ActiveProviderState } from "./api/active-provider";
 import { createPanelSettingsClient, type PanelSettingsClient } from "./api/panel-settings";
 import type { MihomoClient, OverviewData, ProxyMode, ProxyNode } from "./api/types";
 import { createDemoClient, demoOverview } from "./data/demo";
@@ -23,6 +24,7 @@ interface AppProps {
   client?: MihomoClient;
   providerManager?: ProviderManagerClient;
   autoGroupManager?: AutoGroupManagerClient;
+  activeProviderClient?: ActiveProviderClient;
   panelSettingsClient?: PanelSettingsClient;
   wallpaperRepository?: WallpaperRepository;
 }
@@ -30,8 +32,10 @@ interface AppProps {
 const defaultDemoClient = createDemoClient();
 const defaultProviderManager = createProviderManagerClient();
 const defaultAutoGroupManager = createAutoGroupManagerClient();
+const defaultActiveProviderClient = createActiveProviderClient();
 const defaultPanelSettingsClient = createPanelSettingsClient();
 const THEME_STORAGE_KEY = "mihomo-mini:theme";
+const CONTROLLER_RETRY_INTERVAL_MS = 8_000;
 
 type Theme = "light" | "dark";
 
@@ -43,13 +47,16 @@ function loadTheme(): Theme {
   }
 }
 
-function AppContent({ client, providerManager, autoGroupManager, panelSettingsClient }: Required<Pick<AppProps, "client" | "providerManager" | "autoGroupManager" | "panelSettingsClient">>) {
+function AppContent({ client, providerManager, autoGroupManager, activeProviderClient, panelSettingsClient }: Required<Pick<AppProps, "client" | "providerManager" | "autoGroupManager" | "activeProviderClient" | "panelSettingsClient">>) {
   const [section, setSection] = useState<SectionId>("overview");
   const [overview, setOverview] = useState<OverviewData>(() => structuredClone(demoOverview));
   const [loadState, setLoadState] = useState<"loading" | "live" | "demo">("loading");
   const [notice, setNotice] = useState<string | null>(null);
   const [switchGroupName, setSwitchGroupName] = useState<string | null>(null);
   const [speedTestUrl, setSpeedTestUrl] = useState(loadSpeedTestUrl);
+  const [subscriptionState, setSubscriptionState] = useState<ActiveProviderState>({ providers: [], activeProvider: null });
+  const [subscriptionSwitching, setSubscriptionSwitching] = useState(false);
+  const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>(loadTheme);
 
   useEffect(() => {
@@ -72,6 +79,29 @@ function AppContent({ client, providerManager, autoGroupManager, panelSettingsCl
   }, [client]);
 
   useEffect(() => {
+    if (loadState !== "demo") return;
+
+    let active = true;
+    const retryConnection = async () => {
+      try {
+        const data = await client.getOverview();
+        if (!active) return;
+        setOverview(data);
+        setLoadState(data.version === "演示数据" ? "demo" : "live");
+        if (data.version !== "演示数据") setNotice(null);
+      } catch {
+        // Stay on the last safe fallback and try again after the controller finishes starting.
+      }
+    };
+
+    const timer = window.setInterval(() => { void retryConnection(); }, CONTROLLER_RETRY_INTERVAL_MS);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [client, loadState]);
+
+  useEffect(() => {
     let active = true;
     panelSettingsClient.get()
       .then((settings) => {
@@ -83,6 +113,18 @@ function AppContent({ client, providerManager, autoGroupManager, panelSettingsCl
       });
     return () => { active = false; };
   }, [panelSettingsClient]);
+
+  useEffect(() => {
+    let active = true;
+    activeProviderClient.get()
+      .then((state) => {
+        if (active) setSubscriptionState(state);
+      })
+      .catch(() => {
+        // Keep real runtime provider information visible while the config API is temporarily unavailable.
+      });
+    return () => { active = false; };
+  }, [activeProviderClient]);
 
   useEffect(() => {
     if (loadState !== "live") return;
@@ -104,7 +146,7 @@ function AppContent({ client, providerManager, autoGroupManager, panelSettingsCl
       }
     }
 
-    const timer = window.setInterval(refreshLiveProxyState, 8_000);
+    const timer = window.setInterval(refreshLiveProxyState, CONTROLLER_RETRY_INTERVAL_MS);
     return () => {
       active = false;
       window.clearInterval(timer);
@@ -186,6 +228,21 @@ function AppContent({ client, providerManager, autoGroupManager, panelSettingsCl
     setNotice(change.action === "create" ? `已添加订阅：${change.provider.name}` : `已更新订阅：${change.provider.name}`);
   }
 
+  async function handleActiveProviderSelect(name: string) {
+    setSubscriptionSwitching(true);
+    setSubscriptionError(null);
+    try {
+      const nextState = await activeProviderClient.select(name);
+      setSubscriptionState(nextState);
+      await refreshOverview();
+      setNotice(`已切换到订阅：${name}`);
+    } catch {
+      setSubscriptionError("订阅切换失败，原配置已保留，请稍后重试。");
+    } finally {
+      setSubscriptionSwitching(false);
+    }
+  }
+
   async function handleUseAutoGroup(name: string) {
     try {
       const current = await refreshOverview();
@@ -210,7 +267,10 @@ function AppContent({ client, providerManager, autoGroupManager, panelSettingsCl
     const savedSpeedTestUrl = saveSpeedTestUrl(nextSpeedTestUrl);
     try {
       await client.updateConfig(patch);
-      const savedSettings = await panelSettingsClient.save(savedSpeedTestUrl);
+      const savedSettings = await panelSettingsClient.save({
+        speedTestUrl: savedSpeedTestUrl,
+        selectedProviders: null,
+      });
       setSpeedTestUrl(saveSpeedTestUrl(savedSettings.speedTestUrl));
       setOverview((current) => ({
         ...current,
@@ -266,6 +326,11 @@ function AppContent({ client, providerManager, autoGroupManager, panelSettingsCl
         manager={providerManager}
         onUpdate={handleProviderUpdate}
         onConfigurationChanged={handleProviderConfigurationChanged}
+        configuredProviderNames={subscriptionState.providers}
+        activeProvider={subscriptionState.activeProvider}
+        subscriptionSwitching={subscriptionSwitching}
+        subscriptionError={subscriptionError}
+        onSelectActiveProvider={handleActiveProviderSelect}
       />
     );
     if (section === "connections") return <ConnectionsPage client={client} />;
@@ -340,6 +405,7 @@ export function App({
   client = defaultDemoClient,
   providerManager = defaultProviderManager,
   autoGroupManager = defaultAutoGroupManager,
+  activeProviderClient = defaultActiveProviderClient,
   panelSettingsClient = defaultPanelSettingsClient,
   wallpaperRepository,
 }: AppProps) {
@@ -349,6 +415,7 @@ export function App({
         client={client}
         providerManager={providerManager}
         autoGroupManager={autoGroupManager}
+        activeProviderClient={activeProviderClient}
         panelSettingsClient={panelSettingsClient}
       />
     </WallpaperProvider>

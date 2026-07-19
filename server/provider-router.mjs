@@ -83,6 +83,22 @@ export function createProviderRouter({ store, reload }) {
     }
   });
 
+  router.get("/active-provider", async (_request, response) => {
+    try {
+      response.json(await store.getSubscriptionState());
+    } catch (error) {
+      response.status(errorStatus(error)).json({ message: errorMessage(error) });
+    }
+  });
+
+  router.put("/active-provider", async (request, response) => {
+    try {
+      response.json(await store.selectSubscription(request.body?.name, reload));
+    } catch (error) {
+      response.status(errorStatus(error)).json({ message: errorMessage(error) });
+    }
+  });
+
   router.get("/auto-groups", async (_request, response) => {
     try {
       response.json({ groups: await store.listAutoGroups() });
