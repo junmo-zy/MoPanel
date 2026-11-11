@@ -85,20 +85,26 @@ export function createDemoClient(): MihomoClient {
       const match = snapshot.groups.flatMap((group) => group.nodes).find((item) => item.name === node.name);
       return match?.delay ?? 0;
     },
-    async testGroup(groupName: string) {
-      const group = snapshot.groups.find((item) => item.name === groupName);
-      if (!group) return {};
-      return Object.fromEntries(
-        group.nodes
-          .filter((node) => typeof node.delay === "number")
-          .map((node) => [node.name, node.delay as number]),
-      );
-    },
     async updateProvider() {
       snapshot = {
         ...snapshot,
         providers: snapshot.providers.map((provider) => ({ ...provider, updatedAt: new Date().toISOString() })),
       };
+    },
+    async getRules() {
+      return [
+        { type: "DomainSuffix", payload: "github.com", proxy: "自动选择" },
+        { type: "DomainKeyword", payload: "google", proxy: "国外媒体" },
+        { type: "RuleSet", payload: "广告拦截", proxy: "REJECT" },
+        { type: "GeoIP", payload: "CN", proxy: "DIRECT" },
+        { type: "Match", payload: "", proxy: "人工选择" },
+      ];
+    },
+    async getRuleProviders() {
+      return [{ name: "广告拦截", behavior: "Domain", format: "YamlRule", vehicleType: "HTTP", ruleCount: 1280, updatedAt: snapshot.providers[0]?.updatedAt ?? null }];
+    },
+    async updateRuleProvider() {
+      return undefined;
     },
     async getConnections() {
       return {

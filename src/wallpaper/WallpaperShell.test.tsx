@@ -1,13 +1,24 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { App } from "../App";
 import type { WallpaperPreferences, WallpaperRepository } from "./wallpaper-store";
 
 function repository(overrides: Partial<WallpaperPreferences> = {}): WallpaperRepository {
-  const preferences: WallpaperPreferences = { selectedId: "blue-fjord", blur: 12, dim: 24, ...overrides };
+  const preferences: WallpaperPreferences = { selectedId: "blue-fjord", blur: 12, dim: 24, glass: 65, hidden: [], ...overrides };
   return {
     loadPreferences: vi.fn(() => preferences),
+    savePreferences: vi.fn(),
+    loadCustomWallpaper: vi.fn(async () => null),
+    saveCustomWallpaper: vi.fn(async () => undefined),
+    clearCustomWallpaper: vi.fn(async () => undefined),
+  };
+}
+
+function sharedRepository(): WallpaperRepository {
+  return {
+    loadPreferences: vi.fn(() => ({ selectedId: "blue-fjord" as const, blur: 12, dim: 24, glass: 65, hidden: [] })),
+    loadSharedPreferences: vi.fn(async () => ({ selectedId: "warm-dunes" as const, blur: 6, dim: 10, glass: 40, hidden: [] })),
     savePreferences: vi.fn(),
     loadCustomWallpaper: vi.fn(async () => null),
     saveCustomWallpaper: vi.fn(async () => undefined),
@@ -31,20 +42,20 @@ describe("Apple-style wallpaper shell", () => {
       "--wallpaper-image": "url(/wallpapers/blue-fjord.png)",
       "--wallpaper-blur": "12px",
       "--wallpaper-dim": "0.24",
+      "--glass-alpha": "0.65",
     });
-    expect(screen.getByLabelText("窗口控制")).toBeInTheDocument();
+    // No fake traffic lights and no title bar: the brand tops the sidebar, macOS style.
+    expect(screen.queryByLabelText("窗口控制")).not.toBeInTheDocument();
+    expect(desktop.querySelector(".window-titlebar")).not.toBeInTheDocument();
+    expect(desktop.querySelector(".sidebar .sidebar-brand .product-brand")).toHaveTextContent("MoPanel");
   });
 
-  it("removes outer glass material when wallpaper blur and dim are both zero", () => {
-    render(<App wallpaperRepository={repository({ blur: 0, dim: 0 })} />);
-
-    expect(screen.getByTestId("wallpaper-desktop")).toHaveStyle({
-      "--wallpaper-material-blur": "0px",
-      "--window-surface": "transparent",
-      "--main-surface": "transparent",
-      "--titlebar-surface": "transparent",
-      "--sidebar-surface": "transparent",
-    });
+  it("falls back to a plain gradient when every preset is removed and no image is uploaded", () => {
+    render(<App wallpaperRepository={repository({ hidden: ["coastal-mist", "blue-fjord", "warm-dunes"] })} />);
+    const desktop = screen.getByTestId("wallpaper-desktop");
+    // Normalisation keeps the selection valid even with all presets hidden.
+    expect(desktop.querySelector(".wallpaper-layer")).toHaveAttribute("data-empty", "true");
+    expect(desktop).toHaveStyle({ "--wallpaper-image": "none" });
   });
 
   it("exposes wallpaper controls from settings", async () => {
@@ -68,6 +79,16 @@ describe("Apple-style wallpaper shell", () => {
     expect(desktop.querySelector(".wallpaper-layer")).toHaveStyle({
       backgroundImage: "url(/wallpapers/warm-dunes.png)",
     });
+  });
+
+  it("applies shared wallpaper preferences after loading the panel settings API", async () => {
+    render(<App wallpaperRepository={sharedRepository()} />);
+
+    await waitFor(() => expect(screen.getByTestId("wallpaper-desktop")).toHaveStyle({
+      "--wallpaper-image": "url(/wallpapers/warm-dunes.png)",
+      "--wallpaper-blur": "6px",
+      "--wallpaper-dim": "0.1",
+    }));
   });
 
   it("switches the full interface to dark mode from the sidebar footer", async () => {

@@ -1,13 +1,17 @@
 import { createContext } from "react";
-import type { WallpaperId, WallpaperPreferences } from "./wallpaper-store";
+import type { BuiltInWallpaperId, WallpaperId, WallpaperPreferences } from "./wallpaper-preferences";
 
 export interface WallpaperContextValue extends WallpaperPreferences {
-  wallpaperUrl: string;
+  wallpaperUrl: string | null;
   customUrl: string | null;
   error: string;
   chooseWallpaper: (id: WallpaperId) => void;
-  changeBlur: (amount: number) => void;
-  changeDim: (amount: number) => void;
+  setBlur: (blur: number) => void;
+  setDim: (dim: number) => void;
+  setGlass: (glass: number) => void;
+  hideWallpaper: (id: BuiltInWallpaperId) => void;
+  restoreWallpapers: () => void;
+  resetAppearance: () => void;
   uploadWallpaper: (file: File) => Promise<void>;
   removeCustomWallpaper: () => Promise<void>;
 }

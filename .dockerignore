@@ -10,3 +10,7 @@ screenshots
 config
 .mihomo-mini
 .mopanel
+
+*.tar
+.tmp-*
+.smbdelete*

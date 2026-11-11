@@ -27,7 +27,13 @@ function preferredSelectorName(mode: ProxyMode) {
 function findRootSelector(data: Pick<OverviewData, "mode" | "groups">): ProxyGroup | null {
   if (data.mode === "direct") return null;
   const preferred = data.groups.find((group) => group.name === preferredSelectorName(data.mode));
-  return preferred || data.groups.find(isManualProxyGroup) || null;
+  if (preferred) return preferred;
+  // Many subscriptions name their main selector something other than PROXY
+  // (e.g. "节点选择"). In rule mode GLOBAL is never consulted by the rules, so
+  // it must not be mistaken for the active selector.
+  return data.groups.find((group) => isManualProxyGroup(group) && group.name !== "GLOBAL")
+    || (data.mode === "global" ? data.groups.find(isManualProxyGroup) : undefined)
+    || null;
 }
 
 export function resolveCurrentProxy(data: Pick<OverviewData, "mode" | "groups">): CurrentProxyContext {

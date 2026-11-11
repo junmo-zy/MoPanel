@@ -8,6 +8,7 @@ interface AutoGroupEditorDialogProps {
   providerNodes: ProviderProxyNode[];
   defaultTestUrl: string;
   saving: boolean;
+  saveError?: string;
   onClose: () => void;
   onSave: (group: ManagedAutoGroupInput) => Promise<void>;
 }
@@ -43,6 +44,7 @@ export function AutoGroupEditorDialog({
   providerNodes,
   defaultTestUrl,
   saving,
+  saveError = "",
   onClose,
   onSave,
 }: AutoGroupEditorDialogProps) {
@@ -171,7 +173,7 @@ export function AutoGroupEditorDialog({
             {visibleByProvider.length === 0 && <p className="empty-state">没有匹配的订阅节点。</p>}
           </div>
         </div>
-        {error && <p className="inline-error auto-group-error" role="alert">{error}</p>}
+        {(error || saveError) && <p className="inline-error auto-group-error" role="alert">{error || saveError}</p>}
         <div className="provider-modal-actions">
           <button type="button" className="button button-secondary compact-button" onClick={onClose} disabled={saving}>取消</button>
           <button type="submit" className="button button-primary compact-button" disabled={saving}>{saving ? "正在保存…" : "保存自动组"}</button>

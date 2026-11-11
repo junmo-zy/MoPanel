@@ -1,11 +1,13 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import type { AutoGroupManagerClient, ManagedAutoGroup } from "./api/auto-group-manager";
 import type { ActiveProviderClient } from "./api/active-provider";
+import type { PanelSettingsPatch } from "./api/panel-settings";
 import type { ProviderManagerClient } from "./api/provider-manager";
 import type { MihomoClient, OverviewData } from "./api/types";
+import type { WallpaperPreferences } from "./wallpaper/wallpaper-store";
 
 const overview: OverviewData = {
   connected: true,
@@ -46,6 +48,7 @@ const overview: OverviewData = {
     { provider: "测试订阅", name: "备用节点", type: "Hysteria2", delay: 61, alive: true },
   ],
 };
+const defaultWallpaper: WallpaperPreferences = { selectedId: "coastal-mist", blur: 18, dim: 18, glass: 65, hidden: [] };
 
 function createFakeClient(): MihomoClient {
   return {
@@ -53,13 +56,19 @@ function createFakeClient(): MihomoClient {
     setMode: vi.fn(async () => undefined),
     selectProxy: vi.fn(async () => undefined),
     testProxy: vi.fn(async () => 33),
-    testGroup: vi.fn(async () => ({ "测试节点": 33, "备用节点": 61 })),
     updateProvider: vi.fn(async () => undefined),
+    getRules: vi.fn(async () => [{ type: "Match", payload: "", proxy: "PROXY" }]),
+    getRuleProviders: vi.fn(async () => []),
+    updateRuleProvider: vi.fn(async () => undefined),
     getConnections: vi.fn(async () => ({ downloadTotal: 0, uploadTotal: 0, connections: [] })),
     closeConnection: vi.fn(async () => undefined),
     closeAllConnections: vi.fn(async () => undefined),
     updateConfig: vi.fn(async () => undefined),
   };
+}
+
+function modeButton(name: string) {
+  return within(screen.getAllByRole("group", { name: "代理模式" })[0]).getByRole("button", { name });
 }
 
 afterEach(() => {
@@ -71,23 +80,33 @@ describe("Control panel shell", () => {
   it("shows the selected overview layout and primary controls", () => {
     const { container } = render(<App />);
 
-    expect(screen.getByRole("heading", { name: "代理服务运行正常" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "概览" })).toBeInTheDocument();
+    expect(screen.getByText("代理服务运行正常")).toBeInTheDocument();
     expect(container.querySelector(".product-brand")).toHaveTextContent("MoPanel");
     expect(container.querySelector(".product-brand img")).toHaveAttribute("src", "/brand/mopanel-cat.png");
     expect(container.querySelector(".product-brand img")).toHaveAttribute("alt", "");
-    expect(screen.getByRole("button", { name: "规则" })).toHaveAttribute("aria-pressed", "true");
+    expect(modeButton("规则")).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "更换代理" })).toBeInTheDocument();
-    expect(screen.getByText("自动选择")).toBeInTheDocument();
+    // One traffic card replaces the old speed panel and proxy-group list.
+    expect(screen.getByRole("region", { name: "流量统计" })).toBeInTheDocument();
+    expect(container.querySelector(".groups-panel")).not.toBeInTheDocument();
+  });
+
+  it("shows the live speed panel in the sidebar", () => {
+    render(<App />);
+    const speed = screen.getByRole("region", { name: "实时网速" });
+    expect(within(speed).getByLabelText(/^上传 .+\/s$/)).toBeInTheDocument();
+    expect(within(speed).getByLabelText("内核内存 48.0 MB")).toBeInTheDocument();
   });
 
   it("changes the active proxy mode from the overview", async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "全局" }));
+    await user.click(modeButton("全局"));
 
-    expect(screen.getByRole("button", { name: "全局" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: "规则" })).toHaveAttribute("aria-pressed", "false");
+    expect(modeButton("全局")).toHaveAttribute("aria-pressed", "true");
+    expect(modeButton("规则")).toHaveAttribute("aria-pressed", "false");
   });
 
   it("loads live overview data and persists a mode change through the client", async () => {
@@ -101,12 +120,12 @@ describe("Control panel shell", () => {
     render(<TestApp client={client} />);
 
     expect((await screen.findAllByText(/测试节点/)).length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "规则" })).toHaveAttribute("aria-pressed", "true");
+    expect(modeButton("规则")).toHaveAttribute("aria-pressed", "true");
 
-    await user.click(screen.getByRole("button", { name: "全局" }));
+    await user.click(modeButton("全局"));
 
     expect(client.setMode).toHaveBeenCalledWith("global");
-    await waitFor(() => expect(screen.getByRole("button", { name: "全局" })).toHaveAttribute("aria-pressed", "true"));
+    await waitFor(() => expect(modeButton("全局")).toHaveAttribute("aria-pressed", "true"));
   });
 
   it("refreshes the effective proxy periodically so automatic groups stay current", async () => {
@@ -152,15 +171,15 @@ describe("Control panel shell", () => {
     expect(container.querySelector(".demo-badge")).not.toBeInTheDocument();
   });
 
-  it("shows a disconnected titlebar state when the proxy service reports no controller connection", async () => {
+  it("shows a disconnected status in the sidebar header when the proxy service reports no controller connection", async () => {
     const client = createFakeClient();
     client.getOverview = vi.fn(async () => ({ ...overview, connected: false }));
     const TestApp = App as React.ComponentType<{ client: MihomoClient }>;
 
     render(<TestApp client={client} />);
 
-    await screen.findByRole("heading", { name: "代理服务未连接" });
-    expect(screen.getByText("未连接", { selector: ".window-status" })).toBeInTheDocument();
+    await screen.findByText("代理服务未连接");
+    expect(document.querySelector(".sidebar-brand .window-status")).toHaveTextContent("未连接");
   });
 
   it("switches the active proxy group from the overview dialog", async () => {
@@ -183,8 +202,17 @@ describe("Control panel shell", () => {
     const user = userEvent.setup();
     const client = createFakeClient();
     const panelSettingsClient = {
-      get: vi.fn(async () => ({ speedTestUrl: "https://www.gstatic.com/generate_204", selectedProviders: null })),
-      save: vi.fn(async (settings: { speedTestUrl: string; selectedProviders: string[] | null }) => settings),
+      get: vi.fn(async () => ({
+        speedTestUrl: "https://www.gstatic.com/generate_204",
+        selectedProviders: null,
+        wallpaper: defaultWallpaper,
+      })),
+      save: vi.fn(async (settings: PanelSettingsPatch) => ({
+        speedTestUrl: "https://www.gstatic.com/generate_204",
+        selectedProviders: null,
+        wallpaper: defaultWallpaper,
+        ...settings,
+      })),
     };
     render(<App client={client} panelSettingsClient={panelSettingsClient} />);
 
@@ -197,7 +225,9 @@ describe("Control panel shell", () => {
     await user.click(screen.getByRole("button", { name: "概览" }));
     await user.click(screen.getByRole("button", { name: "测速" }));
 
-    expect(client.testGroup).toHaveBeenCalledWith("自动选择", "https://cp.cloudflare.com");
+    // Clash Verge style: each node of the displayed group is tested on its own.
+    await waitFor(() => expect(client.testProxy).toHaveBeenCalledWith(expect.objectContaining({ name: "测试节点" }), "https://cp.cloudflare.com", 10_000));
+    await waitFor(() => expect(client.testProxy).toHaveBeenCalledWith(expect.objectContaining({ name: "备用节点" }), "https://cp.cloudflare.com", 10_000));
     expect(localStorage.getItem("mihomo-mini:speed-test-url")).toBe("https://cp.cloudflare.com");
   }, 10_000);
 
@@ -205,8 +235,17 @@ describe("Control panel shell", () => {
     const user = userEvent.setup();
     const client = createFakeClient();
     const panelSettingsClient = {
-      get: vi.fn(async () => ({ speedTestUrl: "https://cp.cloudflare.com/generate_204", selectedProviders: null })),
-      save: vi.fn(async (settings: { speedTestUrl: string; selectedProviders: string[] | null }) => settings),
+      get: vi.fn(async () => ({
+        speedTestUrl: "https://cp.cloudflare.com/generate_204",
+        selectedProviders: null,
+        wallpaper: defaultWallpaper,
+      })),
+      save: vi.fn(async (settings: PanelSettingsPatch) => ({
+        speedTestUrl: "https://cp.cloudflare.com/generate_204",
+        selectedProviders: null,
+        wallpaper: defaultWallpaper,
+        ...settings,
+      })),
     };
 
     render(<App client={client} {...{ panelSettingsClient }} />);
@@ -281,10 +320,10 @@ describe("Control panel shell", () => {
     await waitFor(() => expect(client.getOverview).toHaveBeenCalledTimes(2));
 
     await user.click(screen.getByRole("button", { name: "代理" }));
-    await user.click(screen.getByRole("button", { name: "查看 PROXY" }));
 
-    expect(screen.getByRole("button", { name: "节点 B 72 ms" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "节点 A 35 ms" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "节点 B" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "测速 节点 B" })).toHaveTextContent("72 ms");
+    expect(screen.queryByRole("button", { name: "节点 A" })).not.toBeInTheDocument();
   });
 
   it("opens the focused proxy, profile, connection, log, and settings pages", async () => {
@@ -299,10 +338,10 @@ describe("Control panel shell", () => {
     expect(screen.getByRole("heading", { name: "订阅" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "连接" }));
-    expect(screen.getByRole("heading", { name: "活动连接" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "连接" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "日志" }));
-    expect(screen.getByRole("heading", { name: "实时日志" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "日志" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "设置" }));
     expect(screen.getByRole("heading", { name: "设置" })).toBeInTheDocument();
@@ -393,5 +432,141 @@ describe("Control panel shell", () => {
     await waitFor(() => expect(manager.attach).toHaveBeenCalledWith(customGroup.name));
     await waitFor(() => expect(client.selectProxy).toHaveBeenNthCalledWith(1, "GLOBAL", "PROXY"));
     await waitFor(() => expect(client.selectProxy).toHaveBeenNthCalledWith(2, "PROXY", customGroup.name));
+  });
+
+  it("never shows fake demo proxies when the real controller is unreachable", async () => {
+    const client = createFakeClient();
+    client.getOverview = vi.fn(async () => { throw new Error("offline"); });
+    const { container } = render(<App client={client} />);
+
+    await screen.findByText("代理服务未连接");
+    expect(container.querySelector(".demo-badge")).not.toBeInTheDocument();
+    expect(screen.queryByText("香港 01")).not.toBeInTheDocument();
+    expect(container.querySelector(".window-status")).toHaveTextContent("未连接");
+
+    const speed = screen.getByRole("region", { name: "实时网速" });
+    expect(within(speed).getByLabelText("下载 0.0 B/s")).toBeInTheDocument();
+    expect(within(speed).queryByLabelText(/内核内存/)).not.toBeInTheDocument();
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "日志" }));
+    expect(screen.getByText("暂无日志")).toBeInTheDocument();
+    expect(screen.queryByText(/health check completed/)).not.toBeInTheDocument();
+  });
+
+  it("refreshes the subscription switch list after a provider is added", async () => {
+    const user = userEvent.setup();
+    const client = createFakeClient();
+    const activeProviderClient: ActiveProviderClient = {
+      get: vi.fn()
+        .mockResolvedValueOnce({ providers: ["测试订阅"], activeProvider: "测试订阅" })
+        .mockResolvedValue({ providers: ["测试订阅", "新订阅"], activeProvider: "测试订阅" }),
+      select: vi.fn(),
+    };
+    const created = {
+      name: "新订阅", type: "http" as const, url: "https://new.example.com/sub", path: "", interval: 3600,
+      proxy: "DIRECT", filter: "", excludeFilter: "",
+      healthCheck: { enable: true, url: "https://www.gstatic.com/generate_204", interval: 300, lazy: true },
+    };
+    const providerManager: ProviderManagerClient = {
+      list: vi.fn(async () => []),
+      create: vi.fn(async () => [created]),
+      update: vi.fn(async () => []),
+      remove: vi.fn(async () => []),
+    };
+    render(<App client={client} providerManager={providerManager} activeProviderClient={activeProviderClient} />);
+    await screen.findAllByText(/测试节点/);
+
+    await user.click(screen.getByRole("button", { name: "订阅" }));
+    await screen.findByRole("button", { name: "选择订阅 测试订阅" });
+    expect(screen.queryByRole("button", { name: "选择订阅 新订阅" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "添加订阅" }));
+    await user.type(screen.getByPlaceholderText("例如：机场订阅"), "新订阅");
+    await user.type(screen.getByPlaceholderText("https://example.com/sub"), "https://new.example.com/sub");
+    await user.click(screen.getByRole("button", { name: "保存订阅" }));
+
+    expect(await screen.findByRole("button", { name: "选择订阅 新订阅" })).toBeInTheDocument();
+    expect(await screen.findByRole("status")).toHaveTextContent("已添加订阅：新订阅");
+  });
+
+  it("only sends changed core settings so IPv6 is not silently disabled", async () => {
+    const user = userEvent.setup();
+    const client = createFakeClient();
+    client.getOverview = vi.fn(async () => ({ ...overview, ipv6: true }));
+    const panelSettingsClient = {
+      get: vi.fn(async () => ({ speedTestUrl: "https://www.gstatic.com/generate_204", selectedProviders: null, wallpaper: defaultWallpaper })),
+      save: vi.fn(async (settings: PanelSettingsPatch) => ({
+        speedTestUrl: "https://www.gstatic.com/generate_204", selectedProviders: null, wallpaper: defaultWallpaper, ...settings,
+      })),
+    };
+    render(<App client={client} panelSettingsClient={panelSettingsClient} />);
+    await screen.findAllByText(/测试节点/);
+
+    await user.click(screen.getByRole("button", { name: "设置" }));
+    expect(screen.getByRole("switch", { name: /启用 IPv6/ })).toBeChecked();
+    await user.click(screen.getByRole("switch", { name: /允许局域网连接/ }));
+    await user.click(screen.getByRole("button", { name: "保存设置" }));
+
+    await waitFor(() => expect(client.updateConfig).toHaveBeenCalledWith({ allowLan: true }));
+    expect(await screen.findByRole("status")).toHaveTextContent("设置已保存");
+  });
+
+  it("closes the node dialog when its group disappears after a refresh", async () => {
+    const user = userEvent.setup();
+    const client = createFakeClient();
+    client.getOverview = vi.fn()
+      .mockResolvedValueOnce(overview)
+      .mockResolvedValue({ ...overview, groups: [overview.groups[1]] });
+    render(<App client={client} />);
+    await screen.findAllByText(/测试节点/);
+
+    await user.click(screen.getByRole("button", { name: "更换代理" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "测速此组" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("switches nodes, tests a single node and changes mode directly on the proxies page", async () => {
+    const user = userEvent.setup();
+    const client = createFakeClient();
+    render(<App client={client} />);
+    await screen.findAllByText(/测试节点/);
+
+    await user.click(screen.getByRole("button", { name: "代理" }));
+    // Only the first group starts expanded; the nested group opens on demand.
+    expect(screen.getByRole("button", { name: "收起 PROXY" })).toHaveAttribute("aria-expanded", "true");
+    await user.click(screen.getByRole("button", { name: "展开 自动选择" }));
+
+    await user.click(screen.getByRole("button", { name: "备用节点" }));
+    expect(client.selectProxy).toHaveBeenCalledWith("自动选择", "备用节点");
+
+    await user.click(screen.getByRole("button", { name: "测速 测试节点" }));
+    expect(client.testProxy).toHaveBeenCalledWith(expect.objectContaining({ name: "测试节点" }), expect.any(String), 10_000);
+
+    await user.click(within(screen.getByRole("group", { name: "代理模式" })).getByRole("button", { name: "全局" }));
+    expect(client.setMode).toHaveBeenCalledWith("global");
+  });
+
+  it("re-syncs groups and rules when the active subscription is updated, like Clash Verge", async () => {
+    const user = userEvent.setup();
+    const client = createFakeClient();
+    const activeProviderClient: ActiveProviderClient = {
+      get: vi.fn(async () => ({ providers: ["测试订阅"], activeProvider: "测试订阅", ruleSource: { mode: "local" as const, provider: "测试订阅", ruleCount: 2 } })),
+      select: vi.fn(),
+      sync: vi.fn(async () => ({ providers: ["测试订阅"], activeProvider: "测试订阅", ruleSource: { mode: "profile" as const, provider: "测试订阅", ruleCount: 1234 } })),
+    };
+    const providerManager: ProviderManagerClient = { list: vi.fn(async () => []), create: vi.fn(), update: vi.fn(), remove: vi.fn() };
+    render(<App client={client} providerManager={providerManager} activeProviderClient={activeProviderClient} />);
+    await screen.findAllByText(/测试节点/);
+
+    await user.click(screen.getByRole("button", { name: "订阅" }));
+    await user.click(await screen.findByRole("button", { name: "更新订阅 测试订阅" }));
+
+    await waitFor(() => expect(activeProviderClient.sync).toHaveBeenCalledTimes(1));
+    expect(client.updateProvider).toHaveBeenCalledWith("测试订阅");
+    expect(await screen.findByRole("status")).toHaveTextContent("使用订阅自带的 1234 条规则");
+    expect(screen.getByText(/代理组和规则来自此订阅 · 1234 条规则/)).toBeInTheDocument();
   });
 });

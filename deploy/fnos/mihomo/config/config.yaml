@@ -1,0 +1,54 @@
+# MoPanel / FNOS minimal starting configuration.
+#
+# It starts cleanly with DIRECT only.  After MoPanel is up, edit the
+# "subscription-1" provider in the Subscriptions page, change it to HTTP,
+# paste a real subscription URL, and save.  MoPanel then writes this same file
+# and reloads Mihomo automatically.
+
+mixed-port: 7890
+allow-lan: true
+bind-address: "*"
+mode: rule
+log-level: info
+ipv6: false
+unified-delay: true
+tcp-concurrent: true
+find-process-mode: off
+
+# Do not publish port 9090 in compose.yml.  It is reachable only by MoPanel on
+# the private shared Docker bridge network.
+external-controller: 0.0.0.0:9090
+
+profile:
+  store-selected: true
+  store-fake-ip: true
+
+# A valid inline provider with one DIRECT fallback makes the first start
+# error-free and gives MoPanel an existing provider reference to switch.
+# Convert it to HTTP in MoPanel before using a real subscription.
+proxy-providers:
+  subscription-1:
+    type: inline
+    payload:
+      - name: subscription-placeholder
+        type: direct
+        udp: true
+
+proxy-groups:
+  # MoPanel subscription cards update this `use` entry during a switch.
+  - name: PROXY
+    type: select
+    proxies:
+      - DIRECT
+    use:
+      - subscription-1
+
+  # Used by Mihomo when the panel selects global mode.
+  - name: GLOBAL
+    type: select
+    proxies:
+      - PROXY
+      - DIRECT
+
+rules:
+  - MATCH,PROXY

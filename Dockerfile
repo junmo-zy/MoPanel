@@ -2,9 +2,9 @@ FROM node:24-alpine AS build
 
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --no-audit --no-fund --loglevel=http
 COPY . .
-RUN npm run build && npm prune --omit=dev && npm cache clean --force
+RUN npm run build && npm prune --omit=dev --no-audit --no-fund && npm cache clean --force
 
 FROM node:24-alpine AS runtime
 
@@ -12,10 +12,10 @@ WORKDIR /app
 ENV NODE_ENV=production \
     PORT=8080
 
-COPY package.json package-lock.json ./
-COPY --from=build /app/node_modules ./node_modules
-COPY server ./server
-COPY --from=build /app/dist ./dist
+COPY --chown=node:node package.json package-lock.json ./
+COPY --chown=node:node --from=build /app/node_modules ./node_modules
+COPY --chown=node:node server ./server
+COPY --chown=node:node --from=build /app/dist ./dist
 
 USER node
 EXPOSE 8080

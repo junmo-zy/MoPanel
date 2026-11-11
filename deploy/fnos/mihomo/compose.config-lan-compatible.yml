@@ -1,0 +1,42 @@
+name: mihomo-lan
+
+# Replace the YAML of the user's existing `mihomo_lan` Compose project with
+# this file.  It deliberately keeps ./config_lan and ports 18888/18889/19090.
+services:
+  mihomo_lan:
+    image: docker.io/metacubex/mihomo:v1.19.28
+    container_name: mihomo_lan
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      # The controller can now reload the file through either the legacy
+      # /app/config path or the MoPanel-safe Mihomo home path.
+      SAFE_PATHS: /root/.config/mihomo:/app/config
+    volumes:
+      # Both mounts intentionally point to the same existing host directory.
+      # This preserves legacy /app/config references while allowing MoPanel's
+      # reload path to be /root/.config/mihomo/config.yaml.
+      - ./config_lan:/root/.config/mihomo
+      - ./config_lan:/app/config
+    ports:
+      - "18888:18888/tcp"
+      - "18888:18888/udp"
+      - "18889:18889/tcp"
+      - "18889:18889/udp"
+      # Keep this only when you still need another host-side dashboard such as
+      # MetaCubeXD.  MoPanel itself uses the private Docker network below.
+      - "19090:19090/tcp"
+    command:
+      - -d
+      - /root/.config/mihomo
+      - -f
+      - /root/.config/mihomo/config.yaml
+    networks:
+      mopanel-net:
+        aliases:
+          - mihomo
+
+networks:
+  mopanel-net:
+    external: true
+    name: mopanel-net

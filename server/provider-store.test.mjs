@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { ProviderConfigStore } from "./provider-store.mjs";
@@ -287,11 +287,11 @@ describe("ProviderConfigStore", () => {
     const { configPath, store } = await createSubscriptionStore();
     const reload = vi.fn(async () => undefined);
 
-    await expect(store.getSubscriptionState()).resolves.toEqual({
+    await expect(store.getSubscriptionState()).resolves.toMatchObject({
       providers: ["airport-a", "airport-b"],
       activeProvider: "airport-a",
     });
-    await expect(store.selectSubscription("airport-b", reload)).resolves.toEqual({
+    await expect(store.selectSubscription("airport-b", reload)).resolves.toMatchObject({
       providers: ["airport-a", "airport-b"],
       activeProvider: "airport-b",
     });
@@ -308,5 +308,23 @@ describe("ProviderConfigStore", () => {
     })).rejects.toThrow("reload rejected");
 
     expect(await readFile(configPath, "utf8")).toBe(sourceWithSubscriptions);
+  });
+
+  it("persists core settings through a symlinked config and keeps the file mode", async () => {
+    const root = await mkdtemp(join(tmpdir(), "mopanel-core-"));
+    roots.push(root);
+    await mkdir(join(root, "real"));
+    const realPath = join(root, "real", "config.yaml");
+    await writeFile(realPath, source, "utf8");
+    await chmod(realPath, 0o640);
+    const linkPath = join(root, "config.yaml");
+    await symlink(realPath, linkPath);
+    const store = new ProviderConfigStore(linkPath);
+
+    await store.updateCore({ mode: "global", "allow-lan": true });
+
+    expect((await lstat(linkPath)).isSymbolicLink()).toBe(true);
+    expect(await readFile(realPath, "utf8")).toContain("mode: global");
+    expect((await stat(realPath)).mode & 0o777).toBe(0o640);
   });
 });

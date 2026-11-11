@@ -1,0 +1,30 @@
+name: mopanel-web
+
+services:
+  mopanel:
+    image: ghcr.io/junmo-zy/mopanel:latest
+    restart: unless-stopped
+    # Avoid FNOS bind-mount permission failures while both containers write the
+    # shared config_lan directory.  It can be tightened after deployment.
+    user: "0:0"
+    ports:
+      - "${MOPANEL_PORT:-1224}:8080"
+    environment:
+      # This uses the Mihomo service alias on the shared Docker network, not
+      # host.docker.internal and not the public NAS port.
+      MIHOMO_API_URL: "http://mihomo:19090"
+      # Must exactly match `secret:` in config_lan/config.yaml.  Leave empty
+      # only when the config has no secret.
+      MIHOMO_SECRET: "${MIHOMO_SECRET:-}"
+      MIHOMO_CONFIG_PATH: "/config/config.yaml"
+      MIHOMO_RELOAD_PATH: "/root/.config/mihomo/config.yaml"
+    volumes:
+      # Exact FNOS absolute path to the existing mihomo/config_lan folder.
+      - "${MIHOMO_CONFIG_DIR:?Set MIHOMO_CONFIG_DIR in .env}:/config"
+    networks:
+      - mopanel-net
+
+networks:
+  mopanel-net:
+    external: true
+    name: mopanel-net

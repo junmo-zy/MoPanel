@@ -1,18 +1,31 @@
+// Where the running groups and rules come from (Clash Verge style profiles).
+export interface RuleSource {
+  mode: "profile" | "local";
+  provider: string | null;
+  ruleCount: number;
+  groupCount?: number;
+  syncedAt?: string;
+  warning?: string;
+  repairedRules?: number;
+}
+
 export interface ActiveProviderState {
   providers: string[];
   activeProvider: string | null;
+  ruleSource?: RuleSource;
 }
 
 export interface ActiveProviderClient {
   get(): Promise<ActiveProviderState>;
   select(name: string): Promise<ActiveProviderState>;
+  sync?(): Promise<ActiveProviderState>;
 }
 
 type Fetcher = typeof fetch;
 
 export function createActiveProviderClient(fetcher: Fetcher = fetch): ActiveProviderClient {
-  async function request(init: RequestInit = {}): Promise<ActiveProviderState> {
-    const response = await fetcher("/api/config/active-provider", {
+  async function request(init: RequestInit = {}, path = ""): Promise<ActiveProviderState> {
+    const response = await fetcher(`/api/config/active-provider${path}`, {
       ...init,
       headers: {
         Accept: "application/json",
@@ -25,6 +38,7 @@ export function createActiveProviderClient(fetcher: Fetcher = fetch): ActiveProv
     return {
       providers: Array.isArray(payload.providers) ? payload.providers : [],
       activeProvider: typeof payload.activeProvider === "string" ? payload.activeProvider : null,
+      ...(payload.ruleSource && typeof payload.ruleSource === "object" ? { ruleSource: payload.ruleSource } : {}),
     };
   }
 
@@ -34,6 +48,9 @@ export function createActiveProviderClient(fetcher: Fetcher = fetch): ActiveProv
     },
     select(name) {
       return request({ method: "PUT", body: JSON.stringify({ name }) });
+    },
+    sync() {
+      return request({ method: "POST" }, "/sync");
     },
   };
 }

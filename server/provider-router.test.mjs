@@ -273,4 +273,52 @@ describe("Mihomo config reload", () => {
       body: JSON.stringify({ path: "/root/.config/mihomo/config.yaml" }),
     });
   });
+
+  it("restores runtime-only options such as the proxy mode after a reload", async () => {
+    const calls = [];
+    const fetcher = vi.fn(async (url, init = {}) => {
+      calls.push([init.method || "GET", url, init.body]);
+      if (!init.method) return Response.json({ mode: "Global", "allow-lan": false, ipv6: true, "mixed-port": 7890 });
+      return new Response(null, { status: 204 });
+    });
+    const reload = createMihomoReloader({ target: "http://mihomo:9090", secret: "", reloadPath: "/config/config.yaml", fetcher });
+
+    await reload();
+
+    expect(calls.map(([method]) => method)).toEqual(["GET", "PUT", "PATCH"]);
+    expect(JSON.parse(calls[2][2])).toEqual({ mode: "global", "allow-lan": false, ipv6: true });
+  });
+});
+
+describe("core settings API", () => {
+  it("applies the change to the running core and persists it to config.yaml", async () => {
+    const store = { updateCore: vi.fn(async () => undefined) };
+    const patchRuntime = vi.fn(async () => undefined);
+    const base = await start(createProviderRouter({ store, reload: vi.fn(), patchRuntime }));
+
+    const response = await fetch(`${base}/core`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "global", allowLan: true }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(patchRuntime).toHaveBeenCalledWith({ mode: "global", "allow-lan": true });
+    expect(store.updateCore).toHaveBeenCalledWith({ mode: "global", "allow-lan": true });
+  });
+
+  it("does not persist a value the core rejected", async () => {
+    const store = { updateCore: vi.fn(async () => undefined) };
+    const patchRuntime = vi.fn(async () => { throw Object.assign(new Error("Mihomo 拒绝修改"), { code: "MIHOMO_REJECTED" }); });
+    const base = await start(createProviderRouter({ store, reload: vi.fn(), patchRuntime }));
+
+    const response = await fetch(`${base}/core`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mixedPort: 7891 }),
+    });
+
+    expect(response.status).toBe(502);
+    expect(store.updateCore).not.toHaveBeenCalled();
+  });
 });

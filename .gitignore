@@ -10,3 +10,17 @@ design-qa.md
 config/
 .mihomo-mini/
 .mopanel/
+
+# NAS deployment image archives
+*.tar
+
+# Local NAS deployment and SMB temporary files
+/compose.yaml
+/compose.build.yaml
+/NAS开发说明.md
+.smbdelete*
+
+# Public deployment templates
+!deploy/fnos/mopanel/.env.config-lan.example
+!deploy/fnos/mihomo/config/
+!deploy/fnos/mihomo/config/config.yaml

@@ -32,7 +32,6 @@ describe("OverviewPage current proxy", () => {
       <OverviewPage
         data={data}
         loadState="live"
-        notice={null}
         onModeChange={vi.fn()}
         onOpenGroup={onOpenGroup}
         onTestGroup={vi.fn(async () => undefined)}
@@ -62,7 +61,6 @@ describe("OverviewPage current proxy", () => {
       <OverviewPage
         data={globalData}
         loadState="live"
-        notice={null}
         onModeChange={vi.fn()}
         onOpenGroup={onOpenGroup}
         onTestGroup={vi.fn(async () => undefined)}
@@ -80,7 +78,6 @@ describe("OverviewPage current proxy", () => {
       <OverviewPage
         data={{ ...data, mode: "direct" }}
         loadState="live"
-        notice={null}
         onModeChange={vi.fn()}
         onOpenGroup={vi.fn()}
         onTestGroup={vi.fn(async () => undefined)}

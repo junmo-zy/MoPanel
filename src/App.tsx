@@ -7,7 +7,11 @@ import { ProfilesPage } from "./components/ProfilesPage";
 import { ConnectionsPage } from "./components/ConnectionsPage";
 import { LogsPage } from "./components/LogsPage";
 import { SettingsPage } from "./components/SettingsPage";
-import type { ProviderConfigurationChange } from "./components/ManagedProvidersPanel";
+import { TestPage } from "./components/TestPage";
+import { RulesPage } from "./components/RulesPage";
+import { TooltipLayer } from "./components/TooltipLayer";
+import { createToolsClient, type ToolsClient } from "./api/tools";
+import type { ProviderConfigurationChange } from "./components/ProfilesPage";
 import { createAutoGroupManagerClient, type AutoGroupManagerClient } from "./api/auto-group-manager";
 import { createProviderManagerClient, type ProviderManagerClient } from "./api/provider-manager";
 import { createActiveProviderClient, type ActiveProviderClient, type ActiveProviderState } from "./api/active-provider";
@@ -19,6 +23,9 @@ import { useWallpaper } from "./wallpaper/useWallpaper";
 import type { WallpaperRepository } from "./wallpaper/wallpaper-store";
 import { loadSpeedTestUrl, saveSpeedTestUrl } from "./speed-test-url";
 import { getProxyActivationSteps, resolveCurrentProxy } from "./proxy-context";
+import { useMemoryStream, useTrafficStream, type TrafficSource } from "./hooks/useTrafficStream";
+import { useMihomoLogs } from "./hooks/useMihomoLogs";
+import { useDelayTester } from "./hooks/useDelayTester";
 
 interface AppProps {
   client?: MihomoClient;
@@ -26,6 +33,7 @@ interface AppProps {
   autoGroupManager?: AutoGroupManagerClient;
   activeProviderClient?: ActiveProviderClient;
   panelSettingsClient?: PanelSettingsClient;
+  toolsClient?: ToolsClient;
   wallpaperRepository?: WallpaperRepository;
 }
 
@@ -34,8 +42,38 @@ const defaultProviderManager = createProviderManagerClient();
 const defaultAutoGroupManager = createAutoGroupManagerClient();
 const defaultActiveProviderClient = createActiveProviderClient();
 const defaultPanelSettingsClient = createPanelSettingsClient();
+const defaultToolsClient = createToolsClient();
 const THEME_STORAGE_KEY = "mihomo-mini:theme";
 const CONTROLLER_RETRY_INTERVAL_MS = 8_000;
+const NOTICE_DURATION_MS = 4_000;
+
+type LoadState = "loading" | "live" | "demo" | "offline";
+
+// Shown while a real controller is loading or unreachable. Fake demo nodes
+// must never appear in place of the user's actual proxies.
+const emptyOverview: OverviewData = {
+  connected: false,
+  version: "—",
+  mode: "rule",
+  mixedPort: null,
+  allowLan: false,
+  downloadTotal: 0,
+  uploadTotal: 0,
+  connectionCount: 0,
+  tcpCount: 0,
+  udpCount: 0,
+  groups: [],
+  providers: [],
+  providerNodes: [],
+};
+
+function loadStateFor(data: OverviewData): LoadState {
+  return data.version === demoOverview.version ? "demo" : "live";
+}
+
+function errorDetail(error: unknown) {
+  return error instanceof Error && error.message ? error.message : "";
+}
 
 type Theme = "light" | "dark";
 
@@ -47,10 +85,11 @@ function loadTheme(): Theme {
   }
 }
 
-function AppContent({ client, providerManager, autoGroupManager, activeProviderClient, panelSettingsClient }: Required<Pick<AppProps, "client" | "providerManager" | "autoGroupManager" | "activeProviderClient" | "panelSettingsClient">>) {
+function AppContent({ client, providerManager, autoGroupManager, activeProviderClient, panelSettingsClient, toolsClient }: Required<Pick<AppProps, "client" | "providerManager" | "autoGroupManager" | "activeProviderClient" | "panelSettingsClient" | "toolsClient">>) {
   const [section, setSection] = useState<SectionId>("overview");
-  const [overview, setOverview] = useState<OverviewData>(() => structuredClone(demoOverview));
-  const [loadState, setLoadState] = useState<"loading" | "live" | "demo">("loading");
+  const isDemoClient = client === defaultDemoClient;
+  const [overview, setOverview] = useState<OverviewData>(() => structuredClone(isDemoClient ? demoOverview : emptyOverview));
+  const [loadState, setLoadState] = useState<LoadState>(isDemoClient ? "demo" : "loading");
   const [notice, setNotice] = useState<string | null>(null);
   const [switchGroupName, setSwitchGroupName] = useState<string | null>(null);
   const [speedTestUrl, setSpeedTestUrl] = useState(loadSpeedTestUrl);
@@ -65,13 +104,13 @@ function AppContent({ client, providerManager, autoGroupManager, activeProviderC
       .then((data) => {
         if (!active) return;
         setOverview(data);
-        setLoadState(data.version === "演示数据" ? "demo" : "live");
+        setLoadState(loadStateFor(data));
       })
       .catch(() => {
         if (!active) return;
-        setOverview(structuredClone(demoOverview));
-        setLoadState("demo");
-        setNotice("无法连接代理服务，当前显示演示数据");
+        setOverview({ ...emptyOverview });
+        setLoadState("offline");
+        setNotice("无法连接代理服务，正在自动重试");
       });
     return () => {
       active = false;
@@ -79,22 +118,37 @@ function AppContent({ client, providerManager, autoGroupManager, activeProviderC
   }, [client]);
 
   useEffect(() => {
-    if (loadState !== "demo") return;
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(null), NOTICE_DURATION_MS);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
+  // Keep automatic-group selections and delays current, notice when the core
+  // goes away, and reconnect by itself once it is back.
+  useEffect(() => {
+    if (loadState !== "live" && loadState !== "offline") return;
     let active = true;
-    const retryConnection = async () => {
-      try {
-        const data = await client.getOverview();
-        if (!active) return;
-        setOverview(data);
-        setLoadState(data.version === "演示数据" ? "demo" : "live");
-        if (data.version !== "演示数据") setNotice(null);
-      } catch {
-        // Stay on the last safe fallback and try again after the controller finishes starting.
-      }
-    };
+    let fetching = false;
 
-    const timer = window.setInterval(() => { void retryConnection(); }, CONTROLLER_RETRY_INTERVAL_MS);
+    async function poll() {
+      if (fetching) return;
+      fetching = true;
+      try {
+        const refreshed = await client.getOverview();
+        if (!active) return;
+        setOverview(refreshed);
+        setLoadState(loadStateFor(refreshed));
+        if (loadState === "offline") setNotice("已重新连接代理服务");
+      } catch {
+        if (!active) return;
+        setOverview((current) => ({ ...current, connected: false }));
+        setLoadState("offline");
+      } finally {
+        fetching = false;
+      }
+    }
+
+    const timer = window.setInterval(() => { void poll(); }, CONTROLLER_RETRY_INTERVAL_MS);
     return () => {
       active = false;
       window.clearInterval(timer);
@@ -126,39 +180,40 @@ function AppContent({ client, providerManager, autoGroupManager, activeProviderC
     return () => { active = false; };
   }, [activeProviderClient]);
 
-  useEffect(() => {
-    if (loadState !== "live") return;
-    let active = true;
-    let fetching = false;
+  // Close the node dialog when its group disappears (e.g. after a subscription
+  // switch) instead of silently showing a different group.
+  const switchGroup = switchGroupName
+    ? overview.groups.find((group) => group.name === switchGroupName) || null
+    : null;
+  if (switchGroupName && !switchGroup && loadState !== "loading") {
+    setSwitchGroupName(null);
+  }
 
-    async function refreshLiveProxyState() {
-      if (fetching) return;
-      fetching = true;
-      try {
-        const refreshed = await client.getOverview();
-        if (!active) return;
-        setOverview(refreshed);
-        setLoadState(refreshed.version === "演示数据" ? "demo" : "live");
-      } catch {
-        // Keep the last confirmed proxy state while a transient poll fails.
-      } finally {
-        fetching = false;
-      }
+  async function reloadSubscriptionState() {
+    try {
+      setSubscriptionState(await activeProviderClient.get());
+    } catch {
+      // The provider list stays as last known; the next successful action refreshes it.
     }
-
-    const timer = window.setInterval(refreshLiveProxyState, CONTROLLER_RETRY_INTERVAL_MS);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, [client, loadState]);
+  }
 
   async function refreshOverview() {
     const refreshed = await client.getOverview();
     setOverview(refreshed);
-    setLoadState(refreshed.version === "演示数据" ? "demo" : "live");
+    setLoadState(loadStateFor(refreshed));
     return refreshed;
   }
+
+  async function refreshOverviewQuietly() {
+    try {
+      await refreshOverview();
+    } catch {
+      // The periodic poll reports a lost controller.
+    }
+  }
+
+  // Clash-Verge-style per-node speed tests; results stream in node by node.
+  const tester = useDelayTester(client, speedTestUrl, refreshOverviewQuietly);
 
   async function handleModeChange(mode: ProxyMode) {
     const previous = overview.mode;
@@ -179,7 +234,7 @@ function AppContent({ client, providerManager, autoGroupManager, activeProviderC
   async function handleNodeSelect(groupName: string, nodeName: string) {
     try {
       await client.selectProxy(groupName, nodeName);
-      await refreshOverview();
+      await refreshOverviewQuietly();
       setSwitchGroupName(null);
       setNotice(`已切换到 ${nodeName}`);
     } catch {
@@ -187,45 +242,101 @@ function AppContent({ client, providerManager, autoGroupManager, activeProviderC
     }
   }
 
-  async function handleTestNode(node: ProxyNode) {
-    const delay = await client.testProxy(node, speedTestUrl);
-    await refreshOverview();
-    return delay;
+  async function handleTestNode(node: ProxyNode, groupName?: string) {
+    const group = groupName ? overview.groups.find((item) => item.name === groupName) : undefined;
+    return tester.testNode(node, group);
+  }
+
+  function testSummary(label: string, total: number, failed: number) {
+    return failed > 0 ? `${label} 测速完成：${total} 个节点，${failed} 个超时` : `${label} 测速完成：${total} 个节点`;
   }
 
   async function handleTestGroup(groupName: string) {
-    try {
-      await client.testGroup(groupName, speedTestUrl);
-      await refreshOverview();
-      setNotice(`${groupName} 测速完成`);
-    } catch (error) {
-      setNotice(`${groupName} 测速失败，请检查测速地址或节点状态`);
-      throw error;
+    let group = overview.groups.find((item) => item.name === groupName);
+    if (!group) {
+      // A just-saved auto group appears only after the next refresh.
+      try {
+        group = (await refreshOverview()).groups.find((item) => item.name === groupName);
+      } catch {
+        group = undefined;
+      }
     }
+    if (!group) throw new Error(`找不到代理组 ${groupName}`);
+    const { total, failed } = await tester.testGroup(group);
+    setNotice(testSummary(groupName, total, failed));
+  }
+
+  async function handleTestAllGroups() {
+    // GLOBAL repeats every node; rule mode never uses it.
+    const groups = overview.mode === "global" ? overview.groups : overview.groups.filter((group) => group.name !== "GLOBAL");
+    const { total, failed } = await tester.testGroups(groups);
+    setNotice(testSummary("全部", total, failed));
+  }
+
+  function ruleSummary(state: ActiveProviderState) {
+    const source = state.ruleSource;
+    if (!source) return "";
+    if (source.warning) return `，${source.warning}`;
+    return source.mode === "profile" ? `，使用订阅自带的 ${source.ruleCount} 条规则` : `，使用本地 ${source.ruleCount} 条规则`;
   }
 
   async function handleProviderUpdate(name: string) {
     try {
       await client.updateProvider(name);
+      // Like Clash Verge, updating the current subscription also refreshes
+      // its proxy groups and rules.
+      let summary = "";
+      if (name === subscriptionState.activeProvider && activeProviderClient.sync) {
+        const synced = await activeProviderClient.sync();
+        setSubscriptionState(synced);
+        summary = ruleSummary(synced);
+      }
       await refreshOverview();
-      setNotice(`${name} 更新成功`);
-    } catch {
-      setNotice(`${name} 更新失败`);
+      setNotice(`${name} 更新成功${summary}`);
+    } catch (error) {
+      setNotice(`${name} 更新失败${errorDetail(error) ? `：${errorDetail(error)}` : ""}`);
+    }
+  }
+
+  async function handleSyncRules() {
+    if (!activeProviderClient.sync) return;
+    try {
+      const synced = await activeProviderClient.sync();
+      setSubscriptionState(synced);
+      await refreshOverviewQuietly();
+      setNotice(`已同步订阅规则${ruleSummary(synced)}`);
+    } catch (error) {
+      setNotice(`同步规则失败${errorDetail(error) ? `：${errorDetail(error)}` : ""}`);
+      throw error;
     }
   }
 
   async function handleProviderConfigurationChanged(change: ProviderConfigurationChange) {
-    const loaded = await refreshOverview();
+    // The subscription switcher lists providers from config.yaml, so it must be
+    // re-read after every add / rename / delete or new entries never appear.
+    await reloadSubscriptionState();
+    let loaded: OverviewData | null = null;
+    try {
+      loaded = await refreshOverview();
+    } catch {
+      // The config change itself succeeded; the poll will catch up.
+    }
     if (change.action === "delete") {
       setNotice(`已删除订阅：${change.provider.name}`);
       return;
     }
 
-    if (loaded.providers.some((provider) => provider.name === change.provider.name)) {
-      await client.updateProvider(change.provider.name);
-      await refreshOverview();
+    const savedName = change.provider.name.trim();
+    if (loaded?.providers.some((provider) => provider.name === savedName)) {
+      try {
+        await client.updateProvider(savedName);
+        await refreshOverview();
+      } catch {
+        setNotice(`已保存订阅：${savedName}，但立即拉取失败，Mihomo 会按更新间隔重试`);
+        return;
+      }
     }
-    setNotice(change.action === "create" ? `已添加订阅：${change.provider.name}` : `已更新订阅：${change.provider.name}`);
+    setNotice(change.action === "create" ? `已添加订阅：${savedName}` : `已更新订阅：${savedName}`);
   }
 
   async function handleActiveProviderSelect(name: string) {
@@ -234,10 +345,11 @@ function AppContent({ client, providerManager, autoGroupManager, activeProviderC
     try {
       const nextState = await activeProviderClient.select(name);
       setSubscriptionState(nextState);
-      await refreshOverview();
-      setNotice(`已切换到订阅：${name}`);
-    } catch {
-      setSubscriptionError("订阅切换失败，原配置已保留，请稍后重试。");
+      await refreshOverviewQuietly();
+      setNotice(`已切换到订阅：${name}${ruleSummary(nextState)}`);
+    } catch (error) {
+      const detail = errorDetail(error);
+      setSubscriptionError(`订阅切换失败，原配置已保留。${detail}`);
     } finally {
       setSubscriptionSwitching(false);
     }
@@ -266,20 +378,23 @@ function AppContent({ client, providerManager, autoGroupManager, activeProviderC
   async function handleConfigSave(patch: Parameters<MihomoClient["updateConfig"]>[0], nextSpeedTestUrl: string) {
     const savedSpeedTestUrl = saveSpeedTestUrl(nextSpeedTestUrl);
     try {
-      await client.updateConfig(patch);
-      const savedSettings = await panelSettingsClient.save({
-        speedTestUrl: savedSpeedTestUrl,
-        selectedProviders: null,
-      });
+      // Only send what actually changed so untouched core options are never overwritten.
+      if (Object.keys(patch).length > 0) {
+        await client.updateConfig(patch);
+        setOverview((current) => ({
+          ...current,
+          allowLan: patch.allowLan ?? current.allowLan,
+          mixedPort: patch.mixedPort ?? current.mixedPort,
+          ipv6: patch.ipv6 ?? current.ipv6,
+        }));
+      }
+      const savedSettings = await panelSettingsClient.save({ speedTestUrl: savedSpeedTestUrl });
       setSpeedTestUrl(saveSpeedTestUrl(savedSettings.speedTestUrl));
-      setOverview((current) => ({
-        ...current,
-        allowLan: patch.allowLan ?? current.allowLan,
-        mixedPort: patch.mixedPort ?? current.mixedPort,
-      }));
       setNotice("设置已保存");
-    } catch {
-      setNotice("设置保存失败，请检查参数");
+    } catch (error) {
+      const detail = errorDetail(error);
+      setNotice(`设置保存失败${detail ? `：${detail}` : "，请检查参数"}`);
+      throw error;
     }
   }
 
@@ -300,7 +415,16 @@ function AppContent({ client, providerManager, autoGroupManager, activeProviderC
       <OverviewPage
         data={overview}
         loadState={loadState}
-        notice={notice}
+        activeProvider={subscriptionState.activeProvider}
+        traffic={traffic}
+        delays={tester.view}
+        extras={{
+          client,
+          tools: toolsClient,
+          memory,
+          onUpdateProvider: handleProviderUpdate,
+          onManageSubscriptions: () => setSection("profiles"),
+        }}
         onModeChange={handleModeChange}
         onOpenGroup={(name) => setSwitchGroupName(name)}
         onTestGroup={handleTestGroup}
@@ -312,10 +436,14 @@ function AppContent({ client, providerManager, autoGroupManager, activeProviderC
         providerNodes={overview.providerNodes}
         manager={autoGroupManager}
         speedTestUrl={speedTestUrl}
-        onOpenGroup={setSwitchGroupName}
         onTestGroup={handleTestGroup}
+        onTestAll={handleTestAllGroups}
         onRefresh={refreshOverview}
         mode={overview.mode}
+        onModeChange={overview.connected ? handleModeChange : undefined}
+        onSelectNode={handleNodeSelect}
+        onTestNode={handleTestNode}
+        delays={tester.view}
         activeProxyGroupName={resolveCurrentProxy(overview).groupName}
         onUseAutoGroup={handleUseAutoGroup}
       />
@@ -328,33 +456,38 @@ function AppContent({ client, providerManager, autoGroupManager, activeProviderC
         onConfigurationChanged={handleProviderConfigurationChanged}
         configuredProviderNames={subscriptionState.providers}
         activeProvider={subscriptionState.activeProvider}
+        ruleSource={subscriptionState.ruleSource}
         subscriptionSwitching={subscriptionSwitching}
         subscriptionError={subscriptionError}
         onSelectActiveProvider={handleActiveProviderSelect}
       />
     );
-    if (section === "connections") return <ConnectionsPage client={client} />;
-    if (section === "logs") return <LogsPage live={loadState === "live"} />;
-    return <SettingsPage data={overview} speedTestUrl={speedTestUrl} onSave={handleConfigSave} />;
+    if (section === "connections") return <ConnectionsPage client={client} live={loadState === "live"} />;
+    if (section === "test") return <TestPage tools={toolsClient} />;
+    if (section === "rules") return <RulesPage client={client} onNotice={setNotice} ruleSource={subscriptionState.ruleSource} onSyncRules={activeProviderClient.sync ? handleSyncRules : undefined} />;
+    if (section === "logs") return <LogsPage state={logs} live={loadState === "live"} demo={loadState === "demo"} />;
+    // Remount once real data arrives so the form never edits placeholder values.
+    return <SettingsPage key={loadState} data={overview} speedTestUrl={speedTestUrl} onSave={handleConfigSave} />;
   }
 
   const wallpaper = useWallpaper();
-  const hasClearWallpaper = wallpaper.blur === 0 && wallpaper.dim === 0;
+  // One shared stream for the sidebar and the overview charts.
+  const trafficSource: TrafficSource = loadState === "live" ? "live" : loadState === "demo" ? "demo" : "off";
+  const traffic = useTrafficStream(trafficSource);
+  const memory = useMemoryStream(trafficSource);
+  // Logs are collected all the time, so history survives switching pages.
+  const logs = useMihomoLogs(loadState === "live", loadState === "demo");
+  // Wallpaper blur and veil act on the wallpaper only; the frosted panels blur
+  // whatever is behind them on their own (Apple-style materials), so the two
+  // never stack into a double blur.
+  const wallpaperImage = wallpaper.wallpaperUrl ? `url(${wallpaper.wallpaperUrl})` : "none";
   const desktopStyle = {
-    "--wallpaper-image": `url(${wallpaper.wallpaperUrl})`,
+    "--wallpaper-image": wallpaperImage,
     "--wallpaper-blur": `${wallpaper.blur}px`,
     "--wallpaper-dim": `${wallpaper.dim / 100}`,
-    "--wallpaper-material-blur": `${Math.round((wallpaper.blur * 4) / 3)}px`,
-    ...(hasClearWallpaper ? {
-      "--window-surface": "transparent",
-      "--main-surface": "transparent",
-      "--titlebar-surface": "transparent",
-      "--sidebar-surface": "transparent",
-    } : {}),
+    "--glass-alpha": `${wallpaper.glass / 100}`,
   } as CSSProperties;
-  const wallpaperLayerStyle = {
-    backgroundImage: `url(${wallpaper.wallpaperUrl})`,
-  } as CSSProperties;
+  const wallpaperLayerStyle = { backgroundImage: wallpaperImage } as CSSProperties;
   const connectionState = loadState === "loading"
     ? "connecting"
     : loadState === "live" && overview.connected
@@ -368,32 +501,31 @@ function AppContent({ client, providerManager, autoGroupManager, activeProviderC
 
   return (
     <div className="wallpaper-desktop" data-testid="wallpaper-desktop" data-theme={theme} style={desktopStyle}>
-      <div className="wallpaper-layer" aria-hidden="true" style={wallpaperLayerStyle} />
+      <div className="wallpaper-layer" aria-hidden="true" data-empty={!wallpaper.wallpaperUrl} style={wallpaperLayerStyle} />
       <div className="wallpaper-shade" aria-hidden="true" />
       <div className="app-window" data-layout="fullscreen">
-        <header className="window-titlebar">
-          <div className="window-controls" aria-label="窗口控制">
-            <span className="window-close" /><span className="window-minimize" /><span className="window-zoom" />
-          </div>
-          <strong className="product-brand">
-            <img src="/brand/mopanel-cat.png" alt="" width={20} height={20} />
-            <span>MoPanel</span>
-          </strong>
-          <span className="window-status" data-state={connectionState} aria-live="polite"><i aria-hidden="true" />{connectionLabel}</span>
-        </header>
         <div className="app-shell">
-          <Sidebar activeSection={section} onNavigate={setSection} theme={theme} onToggleTheme={handleThemeToggle} />
+          <Sidebar activeSection={section} onNavigate={setSection} theme={theme} onToggleTheme={handleThemeToggle} traffic={traffic} memory={memory} connection={{ state: connectionState, label: connectionLabel }} />
           <main className="app-main">
+            {/* Phones have no sidebar header: show the identity above the page. */}
+            <div className="mobile-brand">
+              <img src="/brand/mopanel-cat.png" alt="" width={24} height={24} />
+              <strong>MoPanel</strong>
+              <span className="mobile-status" data-state={connectionState}><i aria-hidden="true" />{connectionLabel}</span>
+            </div>
             {renderSection()}
           </main>
         </div>
-        {switchGroupName && (
+        {notice && <div className="toast" role="status">{notice}</div>}
+        <TooltipLayer />
+        {switchGroup && (
           <NodeSwitcher
-            group={overview.groups.find((group) => group.name === switchGroupName) || overview.groups[0]}
+            group={switchGroup}
             onClose={() => setSwitchGroupName(null)}
             onSelect={handleNodeSelect}
             onTest={handleTestNode}
             onTestGroup={handleTestGroup}
+            delays={tester.view}
           />
         )}
       </div>
@@ -407,6 +539,7 @@ export function App({
   autoGroupManager = defaultAutoGroupManager,
   activeProviderClient = defaultActiveProviderClient,
   panelSettingsClient = defaultPanelSettingsClient,
+  toolsClient = defaultToolsClient,
   wallpaperRepository,
 }: AppProps) {
   return (
@@ -417,6 +550,7 @@ export function App({
         autoGroupManager={autoGroupManager}
         activeProviderClient={activeProviderClient}
         panelSettingsClient={panelSettingsClient}
+        toolsClient={toolsClient}
       />
     </WallpaperProvider>
   );

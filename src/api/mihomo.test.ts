@@ -2,19 +2,41 @@ import { describe, expect, it, vi } from "vitest";
 import { createMihomoClient } from "./mihomo";
 
 describe("Mihomo API client", () => {
-  it("updates the proxy mode through the controller config endpoint", async () => {
+  it("persists the proxy mode through the panel so reloads and restarts keep it", async () => {
     const fetcher = vi.fn(async () => new Response(null, { status: 204 }));
+    const client = createMihomoClient(fetcher);
+
+    await client.setMode("global");
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledWith(
+      "/api/config/core",
+      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ mode: "global" }) }),
+    );
+  });
+
+  it("falls back to a runtime-only mode change when config management is disabled", async () => {
+    const fetcher = vi.fn(async (input: string | URL | Request) => (
+      String(input) === "/api/config/core"
+        ? Response.json({ message: "配置管理尚未启用" }, { status: 503 })
+        : new Response(null, { status: 204 })
+    ));
     const client = createMihomoClient(fetcher);
 
     await client.setMode("global");
 
     expect(fetcher).toHaveBeenCalledWith(
       "/api/mihomo/configs",
-      expect.objectContaining({
-        method: "PATCH",
-        body: JSON.stringify({ mode: "global" }),
-      }),
+      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ mode: "global" }) }),
     );
+  });
+
+  it("surfaces the panel's error instead of silently changing only the runtime", async () => {
+    const fetcher = vi.fn(async () => Response.json({ message: "混合端口必须是 1–65535 之间的整数" }, { status: 400 }));
+    const client = createMihomoClient(fetcher);
+
+    await expect(client.updateConfig({ mixedPort: 0 })).rejects.toThrow("混合端口");
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   it("maps controller data into a compact overview model", async () => {
@@ -150,23 +172,14 @@ describe("Mihomo API client", () => {
 
     await expect(client.testProxy(node, "https://cp.cloudflare.com")).resolves.toBe(66);
     expect(fetcher).toHaveBeenCalledWith(
-      "/api/mihomo/providers/proxies/%E6%9C%BA%E5%9C%BA%E8%AE%A2%E9%98%85/%E9%A6%99%E6%B8%AF%2001/healthcheck?url=https%3A%2F%2Fcp.cloudflare.com&timeout=5000",
+      "/api/mihomo/providers/proxies/%E6%9C%BA%E5%9C%BA%E8%AE%A2%E9%98%85/%E9%A6%99%E6%B8%AF%2001/healthcheck?url=https%3A%2F%2Fcp.cloudflare.com&timeout=10000",
       expect.any(Object),
     );
   });
 
-  it("tests every node in a policy group with the configured URL", async () => {
-    const fetcher = vi.fn(async () => Response.json({ "香港 01": 42, "日本 02": 78 }));
-    const client = createMihomoClient(fetcher);
-
-    await expect(client.testGroup("AUTO", "https://cp.cloudflare.com")).resolves.toEqual({
-      "香港 01": 42,
-      "日本 02": 78,
-    });
-    expect(fetcher).toHaveBeenCalledWith(
-      "/api/mihomo/group/AUTO/delay?url=https%3A%2F%2Fcp.cloudflare.com&timeout=5000",
-      expect.any(Object),
-    );
+  it("rejects a failed or timed-out node test so it shows as 超时", async () => {
+    const client = createMihomoClient(vi.fn(async () => Response.json({ message: "Timeout" }, { status: 504 })));
+    await expect(client.testProxy({ name: "坏节点", type: "VLESS", delay: null, alive: true }, "https://cp.cloudflare.com", 3000)).rejects.toThrow();
   });
 
   it("updates a named proxy provider", async () => {
@@ -247,11 +260,48 @@ describe("Mihomo API client", () => {
     await client.updateConfig({ allowLan: true, ipv6: false, mixedPort: 7891 });
 
     expect(fetcher).toHaveBeenCalledWith(
-      "/api/mihomo/configs",
+      "/api/config/core",
       expect.objectContaining({
         method: "PATCH",
-        body: JSON.stringify({ "allow-lan": true, ipv6: false, "mixed-port": 7891 }),
+        body: JSON.stringify({ allowLan: true, ipv6: false, mixedPort: 7891 }),
       }),
     );
+  });
+
+  it("ignores Mihomo's virtual compatible providers, keeps config order and follows nested groups for delay", async () => {
+    const responses: Record<string, unknown> = {
+      "/api/mihomo/version": { version: "v1.19.15" },
+      "/api/mihomo/configs": { mode: "Rule", "mixed-port": 7890, "allow-lan": true, ipv6: true },
+      "/api/mihomo/proxies": {
+        proxies: {
+          GLOBAL: { name: "GLOBAL", type: "Selector", now: "节点选择", all: ["节点选择", "自动选择", "隐藏组", "DIRECT"] },
+          "隐藏组": { name: "隐藏组", type: "Selector", now: "DIRECT", all: ["DIRECT"], hidden: true },
+          "自动选择": { name: "自动选择", type: "URLTest", now: "香港 01", all: ["香港 01"], history: [{ delay: 999 }] },
+          "节点选择": { name: "节点选择", type: "Selector", now: "自动选择", all: ["自动选择", "香港 01", "DIRECT"] },
+          "香港 01": { name: "香港 01", type: "Trojan", history: [{ delay: 41 }] },
+          DIRECT: { name: "DIRECT", type: "Direct" },
+        },
+      },
+      "/api/mihomo/providers/proxies": {
+        providers: {
+          default: { name: "default", vehicleType: "Compatible", proxies: [{ name: "DIRECT" }, { name: "节点选择" }] },
+          "节点选择": { name: "节点选择", vehicleType: "Compatible", proxies: [{ name: "自动选择" }, { name: "DIRECT" }] },
+          "机场": { name: "机场", vehicleType: "HTTP", proxies: [{ name: "香港 01", type: "Trojan", history: [{ delay: 41 }] }] },
+        },
+      },
+      "/api/mihomo/connections": { connections: [] },
+    };
+    const fetcher = vi.fn(async (input: string | URL | Request) => Response.json(responses[String(input)]));
+    const overview = await createMihomoClient(fetcher).getOverview();
+
+    expect(overview.mode).toBe("rule");
+    expect(overview.ipv6).toBe(true);
+    expect(overview.providers.map((provider) => provider.name)).toEqual(["机场"]);
+    expect(overview.providerNodes.map((node) => node.provider)).toEqual(["机场"]);
+    expect(overview.groups.map((group) => group.name)).toEqual(["节点选择", "自动选择", "GLOBAL"]);
+    expect(overview.groups[0].delay).toBe(41);
+    const selector = overview.groups[0];
+    expect(selector.nodes.find((node) => node.name === "DIRECT")?.provider).toBeUndefined();
+    expect(selector.nodes.find((node) => node.name === "自动选择")?.provider).toBeUndefined();
   });
 });

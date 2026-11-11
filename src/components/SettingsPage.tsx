@@ -11,19 +11,27 @@ interface SettingsPageProps {
 }
 
 export function SettingsPage({ data, speedTestUrl, onSave }: SettingsPageProps) {
-  const [mixedPort, setMixedPort] = useState(data.mixedPort ?? 7890);
+  const [initialMixedPort] = useState(data.mixedPort ?? 7890);
+  const [mixedPort, setMixedPort] = useState(initialMixedPort);
   const [allowLan, setAllowLan] = useState(data.allowLan);
-  const [ipv6, setIpv6] = useState(false);
+  const [ipv6, setIpv6] = useState(data.ipv6 ?? false);
   const [testUrl, setTestUrl] = useState(speedTestUrl);
   const [error, setError] = useState("");
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     try {
-      await onSave({ mixedPort, allowLan, ipv6 }, testUrl);
+      if (!Number.isInteger(mixedPort) || mixedPort < 1 || mixedPort > 65535) {
+        throw new Error("混合端口必须是 1–65535 之间的整数");
+      }
+      const patch: CoreConfigPatch = {};
+      if (mixedPort !== initialMixedPort) patch.mixedPort = mixedPort;
+      if (allowLan !== data.allowLan) patch.allowLan = allowLan;
+      if (data.ipv6 === undefined ? ipv6 : ipv6 !== data.ipv6) patch.ipv6 = ipv6;
+      await onSave(patch, testUrl);
       setError("");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "测速地址保存失败");
+      setError(reason instanceof Error ? reason.message : "设置保存失败");
     }
   }
 

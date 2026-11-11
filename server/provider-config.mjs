@@ -106,6 +106,9 @@ function normalizeProvider(input) {
 
 function providerYamlValue(provider, existing = {}) {
   const value = { ...existing };
+  // The starter config ships an inline placeholder; once it is turned into a
+  // real subscription its placeholder payload must not linger as extra nodes.
+  if (existing.type === "inline" && provider.type !== "inline") delete value.payload;
   value.type = provider.type;
   if (provider.type === "http") value.url = provider.url;
   else delete value.url;
@@ -206,7 +209,8 @@ function nonNegativeInteger(value, fallback, field) {
 function groupList(document) {
   const node = document.get("proxy-groups", true);
   if (node === undefined || node === null) return [];
-  const groups = node.toJSON?.();
+  // After document.set() the value can be a plain array rather than a YAML node.
+  const groups = Array.isArray(node) ? structuredClone(node) : node.toJSON?.();
   if (!Array.isArray(groups)) {
     throw new ProviderConfigError("proxy-groups 必须是 YAML 列表", "INVALID_YAML");
   }
@@ -235,7 +239,7 @@ function escapeMihomoRegex(value) {
     .replaceAll("`", "\\x60");
 }
 
-function exactNodeFilter(nodes) {
+export function exactNodeFilter(nodes) {
   const names = [...new Set(nodes.map((node) => node.name))];
   return `^(?:${names.map(escapeMihomoRegex).join("|")})$`;
 }
@@ -310,17 +314,13 @@ function autoGroupYamlValue(group) {
   };
 }
 
-function attachToProxySelector(groups, groupName) {
-  const selectorIndex = groups.findIndex((group) => (
-    group
-    && typeof group === "object"
-    && group.name === "PROXY"
-    && typeof group.type === "string"
-    && group.type.toLowerCase() === "select"
-  ));
+// Custom auto groups join the main selector: PROXY when it exists, otherwise
+// the first manual group (e.g. "🚀 节点选择" in subscription configs).
+export function attachToProxySelector(groups, groupName) {
+  const selectorIndex = mainSelectorIndex(groups, new Set([groupName]));
   if (selectorIndex < 0) {
     throw new ProviderConfigError(
-      "未找到名为 PROXY 的可选代理组，无法将自定义自动组加入当前代理选择",
+      "未找到可选择的主代理组（如 PROXY 或 节点选择），无法将自定义自动组加入当前代理选择",
       "PROXY_SELECTOR_NOT_FOUND",
     );
   }
@@ -496,6 +496,23 @@ function configuredProviderNames(document) {
   return Object.keys(providers);
 }
 
+export function managedAutoGroupNames(metadata) {
+  if (!metadata) return new Set();
+  try {
+    return new Set(Object.keys(metadataGroups(createAutoGroupMetadata(metadata))));
+  } catch {
+    return new Set();
+  }
+}
+
+// Panel-managed automatic groups are pinned to exact (provider, node) pairs, so
+// they are neither evidence of the active subscription nor something a
+// subscription switch may rewrite.
+function subscriptionGroups(groups, metadata) {
+  const managed = managedAutoGroupNames(metadata);
+  return groups.filter((group) => group && typeof group === "object" && !managed.has(group.name));
+}
+
 function providerNamesUsedByGroups(groups, names) {
   const configured = new Set(names);
   const used = [];
@@ -508,14 +525,25 @@ function providerNamesUsedByGroups(groups, names) {
   return used;
 }
 
-export function getSubscriptionState(source) {
+function isSelectGroup(group) {
+  return group && typeof group === "object" && typeof group.type === "string" && group.type.toLowerCase() === "select";
+}
+
+export function mainSelectorIndex(groups, managed = new Set()) {
+  const proxyIndex = groups.findIndex((group) => isSelectGroup(group) && group.name === "PROXY");
+  if (proxyIndex >= 0) return proxyIndex;
+  return groups.findIndex((group) => isSelectGroup(group) && group.name !== "GLOBAL" && !managed.has(group.name));
+}
+
+export function getSubscriptionState(source, metadata = undefined) {
   const document = parseYaml(source);
   const providers = configuredProviderNames(document);
-  const activeProvider = providerNamesUsedByGroups(groupList(document), providers)[0] ?? null;
+  const groups = subscriptionGroups(groupList(document), metadata);
+  const activeProvider = providerNamesUsedByGroups(groups, providers)[0] ?? null;
   return { providers, activeProvider };
 }
 
-export function switchSubscriptionYaml(source, selectedProvider) {
+export function switchSubscriptionYaml(source, selectedProvider, metadata = undefined) {
   const document = parseYaml(source);
   const providers = configuredProviderNames(document);
   const name = trimmed(selectedProvider);
@@ -524,17 +552,114 @@ export function switchSubscriptionYaml(source, selectedProvider) {
   }
 
   const configured = new Set(providers);
+  const managed = managedAutoGroupNames(metadata);
   const groups = groupList(document);
   let changed = false;
+  let referenced = false;
   for (let index = 0; index < groups.length; index += 1) {
     const group = groups[index];
+    if (managed.has(group?.name)) continue;
     if (!Array.isArray(group?.use) || !group.use.some((item) => configured.has(item))) continue;
+    referenced = true;
     const nextUse = [...new Set(group.use.map((item) => (configured.has(item) ? name : item)))];
     if (sameStringArray(group.use, nextUse)) continue;
     groups[index] = { ...group, use: nextUse };
     changed = true;
   }
+
+  // No group uses any subscription yet (for example the first provider was
+  // just added). Attach the selected one to the main selector so its nodes
+  // actually become selectable instead of silently doing nothing.
+  if (!referenced) {
+    const selectorIndex = mainSelectorIndex(groups, managed);
+    if (selectorIndex < 0) {
+      throw new ProviderConfigError(
+        "配置里没有可挂载订阅的手动选择组（例如 PROXY），无法启用订阅",
+        "PROXY_SELECTOR_NOT_FOUND",
+      );
+    }
+    const selector = groups[selectorIndex];
+    const use = Array.isArray(selector.use) ? selector.use : [];
+    groups[selectorIndex] = { ...selector, use: [...use, name] };
+    changed = true;
+  }
+
   if (changed) setGroupList(document, groups);
+  return document.toString({ lineWidth: 0 });
+}
+
+const GROUP_SOURCE_FIELDS = ["proxies", "use", "include-all", "include-all-proxies", "include-all-providers"];
+
+export function groupHasMembers(group) {
+  return GROUP_SOURCE_FIELDS.some((field) => (
+    Array.isArray(group[field]) ? group[field].length > 0 : group[field] === true
+  ));
+}
+
+// Called after a provider was deleted. Groups that used it keep working:
+// they move to the next configured subscription (the same thing a manual
+// switch would do), and a group left with no members at all falls back to
+// DIRECT, because Mihomo refuses to load a group without `use` or `proxies`.
+function repairGroupsAfterProviderDelete(document, affectedGroupNames, remainingProviders) {
+  const groups = groupList(document);
+  const remaining = new Set(remainingProviders);
+  let changed = false;
+  for (let index = 0; index < groups.length; index += 1) {
+    const group = groups[index];
+    if (!group || typeof group !== "object") continue;
+    const use = Array.isArray(group.use) ? group.use : [];
+    if (affectedGroupNames.has(group.name) && remainingProviders.length > 0 && !use.some((name) => remaining.has(name))) {
+      groups[index] = { ...group, use: [...use, remainingProviders[0]] };
+      changed = true;
+    } else if (!groupHasMembers(group)) {
+      const next = { ...group, proxies: ["DIRECT"] };
+      delete next.use;
+      groups[index] = next;
+      changed = true;
+    }
+  }
+  if (changed) setGroupList(document, groups);
+}
+
+const CORE_MODES = new Set(["rule", "global", "direct"]);
+
+// Validates the few core options the panel edits. Returns both the YAML keys
+// and the identical Mihomo PATCH /configs body.
+export function normalizeCorePatch(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new ProviderConfigError("核心设置内容无效", "INVALID_CORE_SETTINGS");
+  }
+  const patch = {};
+  if (input.mode !== undefined) {
+    const mode = typeof input.mode === "string" ? input.mode.trim().toLowerCase() : "";
+    if (!CORE_MODES.has(mode)) throw new ProviderConfigError("代理模式只能是 rule、global 或 direct", "INVALID_CORE_SETTINGS");
+    patch.mode = mode;
+  }
+  for (const [inputKey, yamlKey] of [["allowLan", "allow-lan"], ["ipv6", "ipv6"]]) {
+    if (input[inputKey] === undefined) continue;
+    if (typeof input[inputKey] !== "boolean") {
+      throw new ProviderConfigError(`${yamlKey} 必须是开关值`, "INVALID_CORE_SETTINGS");
+    }
+    patch[yamlKey] = input[inputKey];
+  }
+  if (input.mixedPort !== undefined) {
+    const port = Number(input.mixedPort);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      throw new ProviderConfigError("混合端口必须是 1–65535 之间的整数", "INVALID_CORE_SETTINGS");
+    }
+    patch["mixed-port"] = port;
+  }
+  if (Object.keys(patch).length === 0) {
+    throw new ProviderConfigError("没有需要保存的核心设置", "INVALID_CORE_SETTINGS");
+  }
+  return patch;
+}
+
+// Writes runtime options into config.yaml so they survive core restarts and
+// the reloads the panel triggers after provider or group changes.
+export function applyCoreSettingsYaml(source, patch) {
+  const document = parseYaml(source);
+  for (const [key, value] of Object.entries(patch)) document.set(key, value);
   return document.toString({ lineWidth: 0 });
 }
 
@@ -571,8 +696,12 @@ export function mutateProviderYaml(source, change) {
     if (!name || !providers.has(name)) {
       throw new ProviderConfigError("要删除的代理提供者不存在", "PROVIDER_NOT_FOUND");
     }
+    const affectedGroups = new Set(groupList(document)
+      .filter((group) => Array.isArray(group?.use) && group.use.includes(name))
+      .map((group) => group.name));
     providers.delete(name);
     updateGroupReferences(document, name, "");
+    repairGroupsAfterProviderDelete(document, affectedGroups, configuredProviderNames(document));
   } else {
     throw new ProviderConfigError("不支持的配置操作");
   }

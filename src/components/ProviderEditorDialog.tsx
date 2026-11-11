@@ -5,6 +5,7 @@ import type { ManagedProviderInput, ManagedProxyProvider } from "../api/provider
 interface ProviderEditorDialogProps {
   provider: ManagedProxyProvider | null;
   saving: boolean;
+  error?: string;
   onClose: () => void;
   onSave: (provider: ManagedProviderInput) => Promise<void>;
 }
@@ -26,7 +27,7 @@ const emptyProvider: ManagedProxyProvider = {
   },
 };
 
-export function ProviderEditorDialog({ provider, saving, onClose, onSave }: ProviderEditorDialogProps) {
+export function ProviderEditorDialog({ provider, saving, error = "", onClose, onSave }: ProviderEditorDialogProps) {
   const [draft, setDraft] = useState<ManagedProxyProvider>(() => (
     structuredClone(provider || emptyProvider)
   ));
@@ -46,7 +47,7 @@ export function ProviderEditorDialog({ provider, saving, onClose, onSave }: Prov
       <form className="provider-modal" onSubmit={submit}>
         <div className="provider-modal-header">
           <div>
-            <h2 id="provider-editor-title">{provider ? "编辑代理提供者" : "添加代理提供者"}</h2>
+            <h2 id="provider-editor-title">{provider ? "编辑订阅" : "添加订阅"}</h2>
             <p>保存后会校验配置并安全重载 Mihomo。</p>
           </div>
           <button type="button" className="icon-button" aria-label="关闭" onClick={onClose} disabled={saving}>
@@ -56,7 +57,7 @@ export function ProviderEditorDialog({ provider, saving, onClose, onSave }: Prov
 
         <div className="provider-form-grid">
           <label className="form-control">
-            <span>提供者名称</span>
+            <span>订阅名称</span>
             <input required value={draft.name} onChange={(event) => setField("name", event.target.value)} placeholder="例如：机场订阅" />
           </label>
           <label className="form-control">
@@ -122,10 +123,11 @@ export function ProviderEditorDialog({ provider, saving, onClose, onSave }: Prov
           )}
         </div>
 
+        {error && <p className="inline-error auto-group-error" role="alert">{error}</p>}
         <div className="provider-modal-actions">
           <button type="button" className="button button-secondary compact-button" onClick={onClose} disabled={saving}>取消</button>
           <button type="submit" className="button button-primary compact-button" disabled={saving}>
-            {saving ? "正在保存…" : "保存提供者"}
+            {saving ? "正在保存…" : "保存订阅"}
           </button>
         </div>
       </form>

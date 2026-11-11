@@ -1,11 +1,20 @@
+import { normalizeWallpaperPreferences, type WallpaperPreferences } from "../wallpaper/wallpaper-preferences";
+
 export interface PanelSettings {
   speedTestUrl: string;
   selectedProviders: string[] | null;
+  wallpaper: WallpaperPreferences;
+}
+
+export interface PanelSettingsPatch {
+  speedTestUrl?: string;
+  selectedProviders?: string[] | null;
+  wallpaper?: WallpaperPreferences;
 }
 
 export interface PanelSettingsClient {
   get(): Promise<PanelSettings>;
-  save(settings: PanelSettings): Promise<PanelSettings>;
+  save(settings: PanelSettingsPatch): Promise<PanelSettings>;
 }
 
 type Fetcher = typeof fetch;
@@ -23,11 +32,18 @@ export function createPanelSettingsClient(fetcher: Fetcher = fetch): PanelSettin
     if (!response.ok) throw new Error(payload.message || `测速设置请求失败（${response.status}）`);
     if (
       typeof payload.speedTestUrl !== "string"
-      || (payload.selectedProviders !== null && !Array.isArray(payload.selectedProviders))
+      || (
+        payload.selectedProviders !== undefined
+        && payload.selectedProviders !== null
+        && !Array.isArray(payload.selectedProviders)
+      )
     ) throw new Error("测速设置响应无效");
     return {
       speedTestUrl: payload.speedTestUrl,
-      selectedProviders: payload.selectedProviders === null ? null : [...payload.selectedProviders],
+      selectedProviders: payload.selectedProviders === null || payload.selectedProviders === undefined
+        ? null
+        : [...payload.selectedProviders],
+      wallpaper: normalizeWallpaperPreferences(payload.wallpaper),
     };
   }
 
