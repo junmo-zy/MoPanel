@@ -2748,3 +2748,12 @@ button.node-card-main:focus-visible { outline: 2px solid var(--accent); outline-
   font-weight: 620;
 }
 .provider-rule-source[data-mode="local"] { color: var(--warning); background: rgb(255 159 10 / 13%); }
+
+/* Phones: toolbar buttons never wrap their labels. */
+.page-header .button { white-space: nowrap; }
+@media (max-width: 700px) {
+  .rules-actions { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
+  .rules-actions .button-primary { grid-column: 1 / -1; }
+  .logs-actions,
+  .connections-actions { width: 100%; }
+}

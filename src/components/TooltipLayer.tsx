@@ -51,8 +51,11 @@ export function TooltipLayer() {
       setTip(null);
     }
 
+    // Touch-only devices have no hover: never leave a tip floating after a tap.
+    const noHover = typeof window.matchMedia === "function" && window.matchMedia("(hover: none)").matches;
+
     function show(element: HTMLElement) {
-      if (target.current === element) return;
+      if (noHover || target.current === element) return;
       window.clearTimeout(timer.current);
       target.current = element;
       const warm = Date.now() - lastHidden.current < WARM_WINDOW_MS;
