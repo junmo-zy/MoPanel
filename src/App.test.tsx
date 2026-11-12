@@ -225,7 +225,7 @@ describe("Control panel shell", () => {
     await user.click(screen.getByRole("button", { name: "概览" }));
     await user.click(screen.getByRole("button", { name: "测速" }));
 
-    // Clash Verge style: each node of the displayed group is tested on its own.
+    // Each node of the displayed group is tested on its own.
     await waitFor(() => expect(client.testProxy).toHaveBeenCalledWith(expect.objectContaining({ name: "测试节点" }), "https://cp.cloudflare.com", 10_000));
     await waitFor(() => expect(client.testProxy).toHaveBeenCalledWith(expect.objectContaining({ name: "备用节点" }), "https://cp.cloudflare.com", 10_000));
     expect(localStorage.getItem("mihomo-mini:speed-test-url")).toBe("https://cp.cloudflare.com");
@@ -549,7 +549,7 @@ describe("Control panel shell", () => {
     expect(client.setMode).toHaveBeenCalledWith("global");
   });
 
-  it("re-syncs groups and rules when the active subscription is updated, like Clash Verge", async () => {
+  it("re-syncs groups and rules when the active subscription is updated", async () => {
     const user = userEvent.setup();
     const client = createFakeClient();
     const activeProviderClient: ActiveProviderClient = {

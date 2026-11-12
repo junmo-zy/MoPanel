@@ -106,7 +106,7 @@ export function RulesPage({ client, onNotice, ruleSource, onSyncRules }: RulesPa
                 type="button"
                 className="button button-primary"
                 disabled={syncing || !ruleSource?.provider}
-                data-tip="重新下载当前订阅，使用其中的代理组和规则（与 Clash Verge 更新订阅相同）"
+                data-tip="重新下载当前订阅，更新代理组和规则"
                 onClick={() => {
                   setSyncing(true);
                   void onSyncRules().then(load, () => undefined).finally(() => setSyncing(false));
@@ -129,7 +129,7 @@ export function RulesPage({ client, onNotice, ruleSource, onSyncRules }: RulesPa
           <strong>{ruleSource.mode === "profile" ? `规则来自订阅「${ruleSource.provider}」` : "规则来自本地配置 config.yaml"}</strong>
           <span>
             {ruleSource.mode === "profile"
-              ? `和 Clash Verge 一样，代理组与规则随订阅更新${ruleSource.syncedAt ? `，同步于 ${new Date(ruleSource.syncedAt).toLocaleString("zh-CN", { hour12: false })}` : ""}${ruleSource.repairedRules ? `；有 ${ruleSource.repairedRules} 条规则指向不存在的组，已改为主代理组` : ""}。`
+              ? `代理组与规则随订阅更新${ruleSource.syncedAt ? `，同步于 ${new Date(ruleSource.syncedAt).toLocaleString("zh-CN", { hour12: false })}` : ""}${ruleSource.repairedRules ? `；有 ${ruleSource.repairedRules} 条规则指向不存在的组，已改为主代理组` : ""}。`
               : ruleSource.provider
                 ? "当前订阅没有提供规则（或尚未同步），点击「从订阅同步」可导入订阅自带的代理组和规则。"
                 : "添加订阅后即可使用订阅自带的代理组和规则。"}

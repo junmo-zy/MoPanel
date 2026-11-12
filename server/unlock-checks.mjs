@@ -1,10 +1,10 @@
-// Streaming / AI availability checks, modelled on Clash Verge's unlock tests.
+// Streaming / AI availability checks through the active proxy.
 // Each check talks to the real service through Mihomo and returns
 // { status: "yes" | "no" | "originals" | "failed", region?, detail? }.
 // Sites change; every check fails soft ("failed" + reason) instead of guessing.
 
 // Public Disney browser-client identifier, not a user's access token:
-// https://github.com/clash-verge-rev/clash-verge-rev/blob/dev/crates/clash-verge-media-unlock/src/disney_plus.rs
+// https://github.com/lmc999/RegionRestrictionCheck/blob/main/check.sh
 
 const DISNEY_BEARER = "ZGlzbmV5JmJyb3dzZXImMS4wLjA.Cu56AgSfBTDag5NiRA81oLHkDZfu5L3CKadnefEAY84";
 
@@ -120,7 +120,7 @@ const checks = {
   },
 
   async netflix(http) {
-    // One licensed and one original title, like Clash Verge: originals-only
+    // One licensed and one original title distinguish originals-only access:
     // regions serve the second but not the first.
     const [licensed, original] = await Promise.all([
       http.request("https://www.netflix.com/title/81280792", { readBody: false }),

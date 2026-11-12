@@ -11,7 +11,7 @@ export function formatTraffic(bytes: number) {
   return `${value >= 100 || unit === 0 ? value.toFixed(0) : value.toFixed(1)} ${BYTE_UNITS[unit]}`;
 }
 
-// Clash-Verge-style split: a number and its unit, e.g. ["66.0", "B/s"].
+// Split a speed into its number and unit, e.g. ["66.0", "B/s"].
 export function speedParts(bytesPerSecond: number): [string, string] {
   const units = ["B/s", "KB/s", "MB/s", "GB/s"];
   let value = Math.max(0, Number.isFinite(bytesPerSecond) ? bytesPerSecond : 0);

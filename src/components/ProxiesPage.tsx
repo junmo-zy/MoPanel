@@ -87,7 +87,7 @@ function sortNodes(nodes: ProxyNode[], sort: SortMode, rankOf: (node: ProxyNode)
   if (sort === "name") {
     sorted.sort((left, right) => left.name.localeCompare(right.name, "zh-CN", { numeric: true }));
   } else {
-    // Measured fastest first, then timeouts, then untested (like Clash Verge).
+    // Measured fastest first, then timeouts, then untested.
     sorted.sort((left, right) => rankOf(left) - rankOf(right));
   }
   return sorted;
@@ -253,8 +253,7 @@ export function ProxiesPage({
 
   function groupNodes(group: ProxyGroup) {
     const query = (queries[group.name] || "").trim().toLowerCase();
-    // While a batch is running the order stays put (Clash Verge defers
-    // re-sorting until every result is in), so cards do not jump under the pointer.
+    // Defer re-sorting until every result is in, so cards do not jump under the pointer.
     const settled = !delays?.progress.has(group.name) && !delays?.progress.has("*");
     return sortNodes(
       query ? group.nodes.filter((node) => node.name.toLowerCase().includes(query)) : group.nodes,

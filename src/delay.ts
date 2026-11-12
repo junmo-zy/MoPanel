@@ -1,4 +1,4 @@
-// Delay classification shared by every speed-test view, following Clash Verge:
+// Delay classification shared by every speed-test view:
 // green < 250 ms, blue < 400 ms, orange above, red for timeout / error.
 
 export const DELAY_TIMEOUT = 10_000;

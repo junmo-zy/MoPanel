@@ -1,6 +1,6 @@
 # MoPanel — notes for agents
 
-MoPanel is a Docker-side web panel for a running Mihomo core: Clash-Verge-like operation, Apple-style visuals. This file records durable decisions; keep it current (replace outdated rules instead of appending new "rounds").
+MoPanel is a Docker-side web panel for a running Mihomo core: everyday proxy management with Apple-style visuals. This file records durable decisions; keep it current (replace outdated rules instead of appending new "rounds").
 
 Run the panel and a real Mihomo core yourself to verify changes (see "Verification"); don't hand the user server-start instructions you can run.
 
@@ -15,17 +15,19 @@ Run the panel and a real Mihomo core yourself to verify changes (see "Verificati
 
 ## Product rules
 
+- Describe MoPanel's behavior directly in UI text, documentation and comments, without comparisons to other applications.
 - Docker-side panel: no host "system proxy" switch. No login/token gate for config edits; it is meant for a trusted LAN.
-- Vocabulary follows Clash Verge: 当前代理, 代理组, 节点, 代理模式, 订阅. Don't rename the proxy experience into "routes".
+- Use these product terms: 当前代理, 代理组, 节点, 代理模式, 订阅. Don't rename the proxy experience into "routes".
 - Navigation (desktop sidebar and mobile tab bar): 概览, 代理, 订阅, 连接, 规则, 日志, 测试, 设置.
 - With a real controller never show demo nodes/traffic/logs; show a disconnected state and keep polling. Demo data only exists for the built-in demo client.
 - Mode, allow-lan, ipv6 and mixed-port go through `PATCH /api/config/core`: applied to the running core and written to config.yaml. Every panel-triggered reload re-applies runtime mode/allow-lan/ipv6. Settings save only sends changed fields.
 - Errors from save/delete actions render inside the open dialog, not behind it. Config writes resolve symlinks, keep the file mode, and are rolled back if Mihomo rejects the reload.
 
-## Visual design (Apple frosted glass)
+## Visual design (clear liquid glass)
 
 - The panel fills the whole browser viewport. No fake window frame, traffic-light dots or full-width title bar. The brand mark (warm-white line-art cat on navy, `public/brand/mopanel-cat.png`, also favicon/touch icon), `MoPanel` and the connection status sit at the top of the floating sidebar; when the sidebar is icon-only the status is a dot on the cat; phones show a light brand row with a status pill.
-- Two material layers, as in Apple's design: the navigation layer (floating sidebar, page-title toolbar, mobile tab bar, dialogs, toast) is translucent glass (32 px blur; saturate 150 % light / 180 % dark; hairline grey edge, soft top highlight — no glowing white rims). The content layer (cards, lists) uses near-opaque grouped surfaces (white in light, #1C1C1E-like in dark).
+- The user explicitly chose clear crystal glass: visible wallpaper, curved edge refraction and a fine bright rim. Major surfaces (navigation, overview panels and settings) use a clear centre and a rounded lens edge. Dialogs use a denser 82 % tint and 12 px blur to separate them from underlying text. Dense lists use simpler translucent material; do not add glass to every nested item. [Apple's Materials guidance](https://developer.apple.com/design/human-interface-guidelines/materials) informs optical depth and readable foregrounds; this web implementation is not the native system material.
+- `useLiquidGlass` builds size-matched SVG backdrop displacement maps only on resize, with a neutral centre and inward refraction within the rounded rim. Chromium gets the lens; other engines keep CSS glass. Never distort foreground text or charts, or regenerate maps on traffic animation frames. Four levels change tint and lens blur (1.5–3.9 px); light content tint is 50–72 %, with darker tint/luminance in dark mode. Thin edge highlights and soft shadows give depth. Reduced-transparency preferences make surfaces opaque and disable refraction. Describe controls directly, without operating-system comparisons.
 - The user picks one of four material levels 超薄/轻薄/标准/浓厚 (stored as `glass` 25/45/65/85, snapped on client and server); `--nav-alpha` / `--content-alpha` derive from it. Never offer a free opacity slider: low tint made text unreadable.
 - Wallpaper: blurred (0–60 px) and veiled (0–90 %, black in dark / white in light) only by the user's settings; no window-wide backdrop blur. Built-in wallpapers can be removed and restored (`hidden`), at least one wallpaper always remains, an empty list falls back to a gradient. Wallpaper choice, custom image, blur, veil and glass level are shared via `.mihomo-mini`; light/dark is per browser. Wallpaper preferences are validated identically in `src/wallpaper/wallpaper-preferences.ts` and `server/panel-settings.mjs`.
 - Page titles sit in their own glass toolbar; never put bare text on the wallpaper.
@@ -35,7 +37,8 @@ Run the panel and a real Mihomo core yourself to verify changes (see "Verificati
 ## Pages
 
 - 概览: status chip, mode + current proxy (live delay, 更换代理 opens the centered node dialog, 测速), 流量统计 (one chart + speeds, totals, connections, memory), 出口 IP (looked up through the proxy, maskable), 当前订阅 (usage, expiry, update), 内核信息 (static facts). No duplicated speed panels or group lists.
-- 代理 (Clash Verge proxy page): mode control in the toolbar; collapsible group cards (icon or monogram, type, current chain to the leaf node, delay; tools: locate, test group, per-group sort, search, count, collapse; custom auto groups add use/edit/delete); node cards in a responsive grid — click to select, click the delay to test one node. URLTest/Fallback/LoadBalance are view-only. Rule mode hides GLOBAL, global mode lists it first; group order is config order (Mihomo's `default` provider). Large groups render in batches of 120; don't use `content-visibility` on node cards (locate lands off-screen).
+- On desktops wider than 1100 px, the overview fills the available height with 16 px bottom padding; card rows share space 3:2 and the traffic plot grows with its card. Keep intrinsic minimum heights and normal scrolling on shorter or narrower screens.
+- 代理: mode control in the toolbar; collapsible group cards (icon or monogram, type, current chain to the leaf node, delay; tools: locate, test group, per-group sort, search, count, collapse; custom auto groups add use/edit/delete); node cards in a responsive grid — click to select, click the delay to test one node. URLTest/Fallback/LoadBalance are view-only. Rule mode hides GLOBAL, global mode lists it first; group order is config order (Mihomo's `default` provider). Large groups render in batches of 120; don't use `content-visibility` on node cards (locate lands off-screen).
 - 订阅: one card per subscription — click to switch; type, node count, host only (never the URL, it carries a token), update time, usage bar and expiry when Mihomo reports `subscriptionInfo` (only after a real download), whether groups/rules come from the subscription; actions update/edit/delete.
 - 连接: `/connections?interval=1000` WebSocket, per-connection speed from snapshot deltas, closed history, list/table views, sort, details, confirm before 全部关闭.
 - 规则: rules in match order with RULE-SET sizes, rule source banner (subscription or local) with 「从订阅同步」, search, batched rendering, 规则集合 dialog.
@@ -46,7 +49,7 @@ Run the panel and a real Mihomo core yourself to verify changes (see "Verificati
 ## Proxy, subscription and rule behaviour
 
 - Mihomo's `Compatible` providers (one per group, plus `default`) are virtual: never show them as subscriptions or as a node's provider. A group's delay is its leaf node's delay.
-- Subscriptions are full profiles, like Clash Verge (`server/profile-sync.mjs`): on switch, update, manual sync, 8 s after panel start and every 6 h, the server downloads the link (UA `clash-verge/v2.2.3 mihomo/1.19`, direct first, then through Mihomo). If it contains `proxy-groups` + `rules`, its groups, rules and rule-providers are used. Nodes still come from the panel's proxy-provider for that link: explicit node lists become `use: [provider]` (+ exact `filter` for partial lists), `include-all-proxies` becomes `use`; rules targeting nodes or missing groups are pointed at the main selector and counted.
+- Subscriptions are full profiles (`server/profile-sync.mjs`): switching uses Mihomo's already-downloaded provider file so rules and nodes come from the same version, downloading only when that file is missing or invalid. Update, manual sync, 8 s after panel start and every 6 h download the link (UA `clash.meta/1.19 MoPanel` for subscription-format compatibility, direct first, then through Mihomo). If it contains `proxy-groups` + `rules`, its groups, rules and rule-providers are used. Nodes still come from the panel's proxy-provider for that link: explicit node lists become `use: [provider]` (+ exact `filter` for partial lists), `include-all-proxies` becomes `use`; rules targeting nodes or missing groups are pointed at the main selector and counted.
 - Base settings always come from config.yaml (ports, LAN, controller, secret, mode, TUN…); profile `dns`/`hosts`/`sniffer`/`geox-url`… are added only when config.yaml lacks them (dns `listen` dropped) and removed again on switching away (tracked in `.mihomo-mini/profile-state.json`).
 - The user's own groups/rules are saved to `.mihomo-mini/local-rules.json` before a profile replaces them and restored for node-only subscriptions. The last downloaded profile is cached in `.mihomo-mini/profiles/` and used, with a warning, when the link is unreachable. Background syncs never rewrite a local-rules config; Mihomo is reloaded only when the generated config changes.
 - Custom auto groups are native `url-test` groups with metadata in `.mihomo-mini/auto-groups.json`; candidates are `(provider, node)` pairs turned into `use` + exact `filter`. They survive every switch and join the main selector (PROXY, else the first select group). A provider referenced by one cannot be renamed or deleted. Subscription switching never rewrites them.
@@ -54,7 +57,7 @@ Run the panel and a real Mihomo core yourself to verify changes (see "Verificati
 
 ## Speed tests
 
-- Port of Clash Verge's DelayManager (`src/hooks/useDelayTester.ts`): each node individually (provider nodes via `/providers/proxies/<p>/<n>/healthcheck`, others via `/proxies/<n>/delay`), 10 in parallel, random 0–200 ms stagger, ≥ 500 ms visible per test, 10 s timeout, the group's own `testUrl` when it has one, results cached 30 min. Don't use Mihomo's whole-group delay endpoint (no progress until all nodes finish).
+- Per-node delay testing (`src/hooks/useDelayTester.ts`): each node individually (provider nodes via `/providers/proxies/<p>/<n>/healthcheck`, others via `/proxies/<n>/delay`), 10 in parallel, random 0–200 ms stagger, ≥ 500 ms visible per test, 10 s timeout, the group's own `testUrl` when it has one, results cached 30 min. Don't use Mihomo's whole-group delay endpoint (no progress until all nodes finish).
 - Colours: green < 250 ms, blue < 400 ms, orange above, red 超时. Sort by delay ranks measured, timeout, untested, and waits until a batch finishes.
 - Animation: three bouncing dots per node, a light sweep over cards under test, results pop in, progress bar and "测速中 x/y".
 

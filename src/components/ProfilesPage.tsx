@@ -160,7 +160,7 @@ export function ProfilesPage({
     }
   }
 
-  const busy = saving || subscriptionSwitching;
+  const busy = saving || subscriptionSwitching || switchingTo !== null;
 
   return (
     <section className="page profiles-page">
@@ -187,7 +187,7 @@ export function ProfilesPage({
           const source = sourceLabel(config);
           const Icon = config?.type === "file" ? FileText : CloudArrowDown;
           return (
-            <article className="provider-card" data-active={selected} key={name} role="listitem" aria-label={name}>
+            <article className="provider-card" data-active={selected} data-switching={switchingTo === name} aria-busy={switchingTo === name} key={name} role="listitem" aria-label={name}>
               <button
                 type="button"
                 className="provider-card-select"

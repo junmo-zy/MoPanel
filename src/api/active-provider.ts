@@ -1,4 +1,4 @@
-// Where the running groups and rules come from (Clash Verge style profiles).
+// Where the running groups and rules come from (subscription profiles).
 export interface RuleSource {
   mode: "profile" | "local";
   provider: string | null;

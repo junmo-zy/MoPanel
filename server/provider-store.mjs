@@ -1,6 +1,6 @@
 import { chmod, mkdir, readFile, realpath, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { parseDocument } from "yaml";
 import { buildSubscriptionConfig, parseProfile } from "./profile-sync.mjs";
 import {
@@ -259,6 +259,21 @@ export class ProviderConfigStore {
     }
   }
 
+  async #readDownloadedProfile(definition) {
+    if (!definition.path) return null;
+    try {
+      // Activate the same downloaded version Mihomo uses for its nodes.
+      const text = await readFile(resolve(dirname(this.#configPath), definition.path), "utf8");
+      const document = parseDocument(text);
+      if (document.errors.length || !Array.isArray(document.get("proxies", true)?.toJSON?.())) return null;
+      const profile = parseProfile(text);
+      return { profile, warning: profile ? undefined : "订阅只提供节点、没有规则，已使用本地规则" };
+    } catch {
+      // Missing or unreadable provider files still use the normal download path.
+      return null;
+    }
+  }
+
   // background: a sync (startup, timer, manual) that must never rewrite a
   // local-rules config; only an explicit switch re-points provider references.
   async #selectSubscription(name, reload, { background = false } = {}) {
@@ -274,7 +289,8 @@ export class ProviderConfigStore {
     const definition = parseDocument(original).getIn(["proxy-providers", trimmed(name)], true)?.toJSON?.();
     let download = { profile: null, warning: undefined };
     if (this.#fetchProfile && definition?.type === "http" && definition.url) {
-      download = await this.#downloadProfile(trimmed(name), definition.url);
+      download = (!background && await this.#readDownloadedProfile(definition))
+        || await this.#downloadProfile(trimmed(name), definition.url);
     }
 
     let next;

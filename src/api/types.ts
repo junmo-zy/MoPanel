@@ -20,7 +20,7 @@ export interface ProxyGroup {
   delay: number | null;
   nodes: ProxyNode[];
   icon?: string;
-  // The group's own health-check URL; Clash Verge tests a group's nodes with it.
+  // The group's own health-check URL, used when testing its nodes.
   testUrl?: string;
 }
 

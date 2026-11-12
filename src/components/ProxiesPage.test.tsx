@@ -194,7 +194,7 @@ describe("ProxiesPage node cards", () => {
     await user.click(screen.getByRole("button", { name: "节点选择 排序，当前默认排序" }));
     const names = within(screen.getByRole("region", { name: "节点选择" }))
       .getAllByRole("button", { pressed: false }).map((button) => button.getAttribute("aria-label"));
-    // Clash Verge order: measured, then timeouts, then untested.
+    // Delay order: measured, then timeouts, then untested.
     expect(names).toEqual(["日本 02", "美国 03", "新加坡 04"]);
 
     await user.click(screen.getByRole("button", { name: "收起 节点选择" }));

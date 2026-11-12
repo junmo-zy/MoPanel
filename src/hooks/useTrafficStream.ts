@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { buildMihomoSocketUrl } from "../api/streams";
 
 export interface TrafficPoint {
+  sequence?: number;
   // Mbps, for the charts.
   up: number;
   down: number;
@@ -26,16 +27,18 @@ const demoPoints: TrafficPoint[] = [
   { down: 14.9, up: 3.0 }, { down: 13.8, up: 2.6 }, { down: 15.6, up: 3.4 },
   { down: 14.1, up: 2.5 }, { down: 13.7, up: 2.8 }, { down: 17.2, up: 3.7 },
   { down: 14.4, up: 2.4 }, { down: 18.6, up: 3.2 },
-];
+].map((point, sequence) => ({ ...point, sequence }));
 
-const idlePoints: TrafficPoint[] = Array.from({ length: POINT_LIMIT }, () => ({ up: 0, down: 0 }));
+const idlePoints: TrafficPoint[] = Array.from({ length: POINT_LIMIT }, (_, sequence) => ({ up: 0, down: 0, sequence }));
 
 export function bytesPerSecondToMbps(value: number) {
   return Number(((value * 8) / 1_000_000).toFixed(1));
 }
 
 export function appendTrafficPoint(points: TrafficPoint[], point: TrafficPoint, limit = POINT_LIMIT) {
-  return [...points, point].slice(-limit);
+  // Stable identities let the charts slide samples left instead of morphing neighboring peaks.
+  const sequence = (points.at(-1)?.sequence ?? -1) + 1;
+  return [...points, { ...point, sequence }].slice(-limit);
 }
 
 // Accepts the legacy boolean form: true = live, false = demo animation.

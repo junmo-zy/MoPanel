@@ -1,4 +1,4 @@
-// Clash-Verge-style subscriptions: a subscription link is a complete Clash
+// Full-profile subscriptions: a subscription link is a complete Clash
 // profile (nodes + proxy groups + rules). MoPanel keeps the nodes coming from
 // its proxy-provider (so node counts, usage, health checks and custom auto
 // groups keep working) and takes the profile's groups, rules and rule sets,
@@ -15,7 +15,7 @@ import {
   switchSubscriptionYaml,
 } from "./provider-config.mjs";
 
-export const PROFILE_USER_AGENT = "clash-verge/v2.2.3 mihomo/1.19";
+export const PROFILE_USER_AGENT = "clash.meta/1.19 MoPanel";
 const BUILTIN_TARGETS = new Set(["DIRECT", "REJECT", "REJECT-DROP", "PASS", "COMPATIBLE", "GLOBAL"]);
 const LOGICAL_RULES = new Set(["AND", "OR", "NOT", "SUB-RULE"]);
 // Taken from the profile only when config.yaml does not define them itself.

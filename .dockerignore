@@ -5,6 +5,7 @@ dist
 *.log
 design-qa.md
 screenshots
+docs/images
 .env
 .env.*
 config

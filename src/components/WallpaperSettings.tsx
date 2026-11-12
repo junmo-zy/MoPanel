@@ -48,7 +48,7 @@ export function WallpaperSettings() {
       <div className="settings-section-title">
         <div>
           <h2 id="appearance-title">桌面与外观</h2>
-          <p>选择壁纸，调整磨砂玻璃效果。设置会同步到所有打开面板的设备（浅色/深色各浏览器单独记忆）。</p>
+          <p>选择壁纸，调整玻璃的通透感。设置会同步到所有打开面板的设备（浅色/深色各浏览器单独记忆）。</p>
         </div>
         <label className="button button-secondary compact-button wallpaper-upload" htmlFor="wallpaper-upload-input">
           <UploadSimple size={17} aria-hidden="true" />上传壁纸
@@ -166,7 +166,7 @@ export function WallpaperSettings() {
               >{level.label}</button>
             ))}
           </div>
-          <small>像 macOS 一样分档：侧栏、标题栏是透明玻璃，内容卡片保持易读。</small>
+          <small>从清透到柔和，调整玻璃厚度；降低壁纸模糊度能看清边缘折射。</small>
         </div>
       </div>
       <button type="button" className="text-button" onClick={wallpaper.resetAppearance}>

@@ -59,7 +59,7 @@ function writeJson(key: string, value: unknown) {
 function formatTime(value?: string) {
   if (!value) return "-- --";
   const date = new Date(value);
-  // sv-SE gives the compact "2026-10-21 15:03:43" form Clash Verge uses.
+  // sv-SE gives the compact "2026-10-21 15:03:43" timestamp format.
   return Number.isNaN(date.getTime()) ? "-- --" : date.toLocaleString("sv-SE", { hour12: false });
 }
 

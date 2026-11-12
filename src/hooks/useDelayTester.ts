@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import type { MihomoClient, ProxyGroup, ProxyNode } from "../api/types";
 import { DELAY_TIMEOUT } from "../delay";
 
-// A port of Clash Verge's DelayManager behaviour:
+// Tests each node separately so progress and results appear incrementally:
 // - every node is tested on its own, 10 at a time, each start staggered by a
 //   random 0–200 ms so the core is not hit all at once;
 // - a test shows its loading state for at least 500 ms, and gives up at the

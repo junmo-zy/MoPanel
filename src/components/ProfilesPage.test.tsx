@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ManagedProxyProvider, ProviderManagerClient } from "../api/provider-manager";
@@ -185,6 +185,26 @@ describe("subscriptions page", () => {
     await user.click(within(backup).getByRole("button", { name: "选择订阅 备用机场" }));
     expect(onSelectActiveProvider).toHaveBeenCalledWith("备用机场");
     expect(screen.getAllByRole("listitem")).toHaveLength(2);
+  });
+
+  it("marks the whole pending card busy and prevents duplicate switches until it finishes", async () => {
+    const user = userEvent.setup();
+    let finish!: () => void;
+    const onSelectActiveProvider = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
+    const manager = fakeManager([provider, { ...provider, name: "备用机场" }]);
+    render(<ManagedProvidersPanel manager={manager} onSelectActiveProvider={onSelectActiveProvider} />);
+    const backup = await screen.findByRole("listitem", { name: "备用机场" });
+    const button = within(backup).getByRole("button", { name: "选择订阅 备用机场" });
+    await user.click(button);
+    expect(backup).toHaveAttribute("aria-busy", "true");
+    expect(backup).toHaveAttribute("data-active", "false");
+    expect(within(backup).getByText("切换中…")).toBeInTheDocument();
+    expect(button).toBeDisabled();
+    await user.click(button);
+    expect(onSelectActiveProvider).toHaveBeenCalledOnce();
+    await act(async () => finish());
+    expect(backup).toHaveAttribute("aria-busy", "false");
+    expect(button).toBeEnabled();
   });
 
   it("falls back to read-only cards when config management is unavailable", async () => {

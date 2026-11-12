@@ -326,7 +326,7 @@ export function createMihomoClient(fetcher: Fetcher = fetch): MihomoClient {
     },
 
     async testProxy(node: ProxyNode, testUrl: string, timeout = 10_000) {
-      // Same endpoints as Clash Verge: provider nodes through their provider's
+      // Test provider nodes through their provider's
       // health check (updates the provider's view too), others directly.
       const params = new URLSearchParams({
         url: testUrl,

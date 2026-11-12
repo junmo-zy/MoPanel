@@ -24,7 +24,7 @@ const RECONNECT_DELAY_MS = 3_000;
 
 // Mihomo pushes a full snapshot every second on /connections; per-connection
 // speeds are the byte difference between two snapshots, and connections that
-// disappear are kept as "closed" history like Clash Verge does.
+// disappear are kept as "closed" history.
 export function useConnections(client: MihomoClient, live: boolean): ConnectionsState {
   const [state, setState] = useState<Omit<ConnectionsState, "clearClosed">>({ active: [], closed: [], downloadTotal: 0, uploadTotal: 0 });
   const previous = useRef<{ at: number; byId: Map<string, LiveConnection> }>({ at: 0, byId: new Map() });

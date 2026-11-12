@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -65,7 +65,7 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-describe("subscription profiles (Clash Verge style)", () => {
+describe("subscription profiles", () => {
   it("ignores node-only or non-Clash subscriptions", () => {
     expect(parseProfile("dm1lc3M6Ly9leGFtcGxl")).toBeNull();
     expect(parseProfile("proxies:\n  - {name: a, type: direct}\n")).toBeNull();
@@ -160,6 +160,34 @@ describe("subscription profiles (Clash Verge style)", () => {
     fetchProfile.mockResolvedValueOnce(PROFILE.replace("GEOIP,CN,DIRECT", "GEOIP,JP,DIRECT"));
     await expect(store.syncActiveSubscription(vi.fn(async () => { throw new Error("Mihomo 拒绝重载"); }))).rejects.toThrow("拒绝重载");
     expect(await readFile(configPath, "utf8")).toBe(before);
+  });
+
+  it("switches using Mihomo's downloaded profile without a network round trip, but sync fetches fresh rules", async () => {
+    const root = await mkdtemp(join(tmpdir(), "mopanel-profile-"));
+    roots.push(root);
+    const configPath = join(root, "config.yaml");
+    await writeFile(configPath, BASE);
+    await mkdir(join(root, "proxy_providers"));
+    const providerPath = join(root, "proxy_providers/hneko.yaml");
+    await writeFile(providerPath, PROFILE);
+    const fetchProfile = vi.fn(async () => PROFILE.replace("GEOIP,CN,DIRECT", "GEOIP,JP,DIRECT"));
+    const store = new ProviderConfigStore(configPath, { fetchProfile });
+    const reload = vi.fn(async () => undefined);
+
+    expect((await store.selectSubscription("Hneko", reload)).ruleSource.mode).toBe("profile");
+    expect(fetchProfile).not.toHaveBeenCalled();
+    await store.syncActiveSubscription(reload);
+    expect(fetchProfile).toHaveBeenCalledOnce();
+    expect(await readFile(configPath, "utf8")).toContain("GEOIP,JP,DIRECT");
+
+    await writeFile(providerPath, "proxies: []\n");
+    expect((await store.selectSubscription("Hneko", reload)).ruleSource.mode).toBe("local");
+    expect(fetchProfile).toHaveBeenCalledOnce();
+    expect(await readFile(configPath, "utf8")).toContain("MATCH,PROXY");
+
+    await writeFile(providerPath, "proxies: [broken");
+    expect((await store.selectSubscription("Hneko", reload)).ruleSource.mode).toBe("profile");
+    expect(fetchProfile).toHaveBeenCalledTimes(2);
   });
 
   it("never rewrites a local-rules config during a background sync", async () => {

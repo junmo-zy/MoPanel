@@ -16,7 +16,7 @@ function group(count: number, testUrl?: string): ProxyGroup {
   };
 }
 
-describe("useDelayTester (Clash Verge delay manager behaviour)", () => {
+describe("useDelayTester", () => {
   it("tests nodes one by one, at most 10 at a time, with the group's own URL", async () => {
     vi.useFakeTimers();
     let running = 0;

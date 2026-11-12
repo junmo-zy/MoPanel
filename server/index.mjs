@@ -46,7 +46,7 @@ const controllerProxy = createProxyMiddleware({
 const proxiedHttp = createProxiedHttp({ resolveProxyUrl: createProxyResolver({ target, secret, proxyUrl }) });
 const MAX_PROFILE_BYTES = 30 * 1024 * 1024;
 
-// Downloads a subscription like Clash Verge: Clash user agent, direct first,
+// Requests a Mihomo-compatible subscription directly first,
 // then through Mihomo when the NAS cannot reach the link directly.
 async function fetchProfile(url) {
   const headers = { "user-agent": PROFILE_USER_AGENT, accept: "*/*" };
@@ -111,8 +111,7 @@ const server = app.listen(port, "0.0.0.0", () => {
 
 server.on("upgrade", controllerProxy.upgrade);
 
-// Like Clash Verge applying the current profile at launch, and keeping it
-// fresh: sync the active subscription's groups and rules shortly after start
+// Sync the active subscription's groups and rules shortly after start
 // and every 6 hours (Mihomo is reloaded only when something changed).
 if (providerStore && reloadPath) {
   const syncProfile = (reason) => providerStore.syncActiveSubscription(reloadMihomo)

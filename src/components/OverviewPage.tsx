@@ -10,7 +10,7 @@ import { resolveCurrentProxy } from "../proxy-context";
 import { CoreInfoCard, ExitIpCard, SubscriptionCard } from "./OverviewCards";
 import { TrafficSparkline } from "./TrafficSparkline";
 
-// Clash-Verge-style home cards; optional so the page also renders on its own.
+// Overview cards are optional so the page also renders on its own.
 export interface OverviewExtras {
   client: MihomoClient;
   tools: ToolsClient;
@@ -169,7 +169,7 @@ export function OverviewPage({ data, loadState, activeProvider = null, traffic: 
             <h2 id="home-traffic-title">流量统计</h2>
             <span className="traffic-legend"><i data-tone="down" />下载<i data-tone="up" />上传</span>
           </header>
-          <TrafficSparkline points={traffic.points} dataKey="down" color="#0a84ff" secondary={{ dataKey: "up", color: "#ff9f0a" }} height={112} label="实时上传下载速度曲线" />
+          <TrafficSparkline points={traffic.points} dataKey="down" color="#0a84ff" secondary={{ dataKey: "up", color: "#ff9f0a" }} height={112} fillHeight label="实时上传下载速度曲线" />
           <div className="traffic-stats">
             <Stat icon={<ArrowDown size={14} weight="bold" aria-hidden="true" />} label="下载速度" value={downValue} unit={downUnit} tone="down" tip="当前每秒下载量" />
             <Stat icon={<ArrowUp size={14} weight="bold" aria-hidden="true" />} label="上传速度" value={upValue} unit={upUnit} tone="up" tip="当前每秒上传量" />

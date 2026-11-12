@@ -20,6 +20,7 @@ import type { MihomoClient, OverviewData, ProxyMode, ProxyNode } from "./api/typ
 import { createDemoClient, demoOverview } from "./data/demo";
 import { WallpaperProvider } from "./wallpaper/WallpaperContext";
 import { useWallpaper } from "./wallpaper/useWallpaper";
+import { useLiquidGlass } from "./wallpaper/useLiquidGlass";
 import type { WallpaperRepository } from "./wallpaper/wallpaper-store";
 import { loadSpeedTestUrl, saveSpeedTestUrl } from "./speed-test-url";
 import { getProxyActivationSteps, resolveCurrentProxy } from "./proxy-context";
@@ -86,6 +87,7 @@ function loadTheme(): Theme {
 }
 
 function AppContent({ client, providerManager, autoGroupManager, activeProviderClient, panelSettingsClient, toolsClient }: Required<Pick<AppProps, "client" | "providerManager" | "autoGroupManager" | "activeProviderClient" | "panelSettingsClient" | "toolsClient">>) {
+  const glassDefinitions = useLiquidGlass();
   const [section, setSection] = useState<SectionId>("overview");
   const isDemoClient = client === defaultDemoClient;
   const [overview, setOverview] = useState<OverviewData>(() => structuredClone(isDemoClient ? demoOverview : emptyOverview));
@@ -212,7 +214,7 @@ function AppContent({ client, providerManager, autoGroupManager, activeProviderC
     }
   }
 
-  // Clash-Verge-style per-node speed tests; results stream in node by node.
+  // Per-node speed tests stream results in node by node.
   const tester = useDelayTester(client, speedTestUrl, refreshOverviewQuietly);
 
   async function handleModeChange(mode: ProxyMode) {
@@ -283,7 +285,7 @@ function AppContent({ client, providerManager, autoGroupManager, activeProviderC
   async function handleProviderUpdate(name: string) {
     try {
       await client.updateProvider(name);
-      // Like Clash Verge, updating the current subscription also refreshes
+      // Updating the current subscription also refreshes
       // its proxy groups and rules.
       let summary = "";
       if (name === subscriptionState.activeProvider && activeProviderClient.sync) {
@@ -503,6 +505,7 @@ function AppContent({ client, providerManager, autoGroupManager, activeProviderC
     <div className="wallpaper-desktop" data-testid="wallpaper-desktop" data-theme={theme} style={desktopStyle}>
       <div className="wallpaper-layer" aria-hidden="true" data-empty={!wallpaper.wallpaperUrl} style={wallpaperLayerStyle} />
       <div className="wallpaper-shade" aria-hidden="true" />
+      <svg ref={glassDefinitions} className="glass-definitions" aria-hidden="true" width="0" height="0" />
       <div className="app-window" data-layout="fullscreen">
         <div className="app-shell">
           <Sidebar activeSection={section} onNavigate={setSection} theme={theme} onToggleTheme={handleThemeToggle} traffic={traffic} memory={memory} connection={{ state: connectionState, label: connectionLabel }} />

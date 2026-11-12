@@ -557,6 +557,8 @@ label[role="button"]:focus-visible {
 
 .provider-card {
   position: relative;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--divider);
@@ -578,6 +580,7 @@ label[role="button"]:focus-visible {
 }
 
 .provider-card-select {
+  flex: 1;
   width: 100%;
   min-height: 122px;
   display: grid;
@@ -591,7 +594,10 @@ label[role="button"]:focus-visible {
   text-align: left;
 }
 
-.provider-card-select:hover { background: var(--fill-hover); }
+.provider-card-select:hover:not(:disabled) { background: var(--fill-hover); }
+.provider-card[data-active="true"] .provider-card-select,
+.provider-card[data-switching="true"] .provider-card-select { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.provider-card[data-switching="true"] { border-color: var(--accent); }
 .provider-card-select:disabled { cursor: wait; }
 .provider-card-select:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
 
@@ -1402,7 +1408,7 @@ label[role="button"]:focus-visible {
   }
 }
 
-/* ---- Proxies page: collapsible groups with node cards (Clash-Verge-like) ---- */
+/* ---- Proxies page: collapsible groups with node cards ---- */
 .proxies-page .page-header { align-items: center; }
 .proxy-page-actions { flex-wrap: wrap; justify-content: flex-end; }
 .proxy-mode-control { width: 216px; }
@@ -1749,7 +1755,7 @@ button.node-card-main:focus-visible { outline: 2px solid var(--accent); outline-
    on purpose: its estimated card heights make "locate current node" land off-screen. */
 .node-grid-more { display: flex; justify-content: center; padding-top: 12px; }
 
-/* ---- Sidebar live speed (Clash-Verge-like) ---- */
+/* ---- Sidebar live speed ---- */
 .sidebar-traffic {
   display: grid;
   gap: 4px;
@@ -2021,7 +2027,7 @@ button.node-card-main:focus-visible { outline: 2px solid var(--accent); outline-
   .connection-chain { max-width: 160px; }
 }
 
-/* ---- 日志 page (Clash-Verge-like entries: time + level, then message) ---- */
+/* ---- 日志 page (entries: time + level, then message) ---- */
 .logs-actions { display: flex; gap: 8px; }
 .logs-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
 .logs-search { flex: 1; min-width: 0; }
@@ -2104,7 +2110,7 @@ button.node-card-main:focus-visible { outline: 2px solid var(--accent); outline-
   .rule-proxy { grid-column: 2; justify-self: start; }
 }
 
-/* ---- 概览: Clash-Verge-style info cards ---- */
+/* ---- 概览: info cards ---- */
 .home-card {
   min-width: 0;
   display: flex;
@@ -2149,7 +2155,7 @@ button.node-card-main:focus-visible { outline: 2px solid var(--accent); outline-
 .home-card-list dd { min-width: 0; margin: 0; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
 .home-core-list > div { padding: 5px 0; }
 
-/* ---- Speed-test animation (Clash Verge style: loading dots per node) ---- */
+/* ---- Speed-test animation (loading dots per node) ---- */
 .node-delay[data-tone="medium"],
 .proxy-group-delay[data-tone="medium"] { color: var(--accent); }
 .node-delay[data-tone="slow"],
@@ -2327,39 +2333,60 @@ button.node-card-main:focus-visible { outline: 2px solid var(--accent); outline-
   .traffic-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .overview-header h1 { font-size: 25px; }
 }
-.traffic-card .traffic-chart { height: 112px; }
-.sidebar-traffic .traffic-chart { height: 40px; }
+@media (min-width: 1101px) {
+  .overview-page {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+    padding-bottom: 16px;
+  }
+  .overview-header,
+  .overview-page .primary-controls { flex-shrink: 0; }
+  .home-grid {
+    flex: 1;
+    grid-template-rows: minmax(min-content, 3fr) minmax(min-content, 2fr);
+  }
+  .traffic-card .traffic-chart { flex: 1 0 112px; min-height: 112px; }
+}
 
 /* =====================================================================
-   Apple materials (round 8)
-   Follows Apple's two-layer model:
-   - Navigation layer (title bar, sidebar, page toolbars, mobile tab bar,
-     dialogs, toast) is translucent glass that frosts the wallpaper.
-   - Content layer (cards and lists you read) sits on "grouped" surfaces:
-     near-white in light mode, #1C1C1E-like in dark mode, far more opaque.
+   Clear glass: a quiet centre, refracting curved edges and a fine light rim.
+   SVG refraction is confined to major surfaces; dense lists use CSS material.
    The user picks one of four material levels (超薄 / 轻薄 / 标准 / 浓厚);
    --glass-alpha is that level (0.25 / 0.45 / 0.65 / 0.85) and every surface
    derives from it, so no setting can make text unreadable.
    ===================================================================== */
 .wallpaper-desktop {
   --glass-alpha: 0.65;
-  --material-blur: 32px;
-  /* Navigation glass: 0.40 … 0.86 */
-  --nav-alpha: calc(0.27 + var(--glass-alpha) * 0.7);
-  /* Content cards: 0.66 … 0.94 */
-  --content-alpha: calc(0.57 + var(--glass-alpha) * 0.44);
+  --material-blur: calc(2px + var(--glass-alpha) * 6px);
+  --content-blur: calc(8px + var(--glass-alpha) * 8px);
+  --lens-blur: calc(0.5px + var(--glass-alpha) * 4px);
+  --content-backdrop: blur(var(--content-blur)) saturate(110%);
 }
 .wallpaper-desktop[data-theme="light"],
 .wallpaper-desktop:not([data-theme]) {
-  --material-saturate: 150%;
-  --nav-tint: 246 246 248;
+  color-scheme: light;
+  --nav-alpha: calc(0.32 + var(--glass-alpha) * 0.38);
+  --content-alpha: calc(0.4 + var(--glass-alpha) * 0.38);
+  --nav-backdrop: blur(var(--material-blur)) saturate(110%);
+  --lens-light: brightness(1.08);
+  --lens-edge: rgb(255 255 255 / 58%);
+  --lens-highlight: rgb(255 255 255 / 85%);
+  --lens-lowlight: rgb(30 45 65 / 16%);
+  --lens-sheen: rgb(255 255 255 / 18%);
+  --nav-tint: 250 250 252;
   --content-tint: 255 255 255;
   --veil: 255 255 255;
+  --accent: #0071e3;
+  --accent-pressed: #0062cc;
   --ink: #1d1d1f;
-  --ink-secondary: rgb(60 60 67 / 72%);
-  --ink-tertiary: rgb(60 60 67 / 52%);
+  --ink-secondary: #3f434d;
+  --ink-tertiary: #494d57;
+  --nav-ink: #29292d;
+  --nav-active-ink: #0052ad;
+  --nav-hover: rgb(255 255 255 / 60%);
   --surface-strong: rgb(var(--content-tint) / var(--content-alpha));
-  --surface: rgb(var(--content-tint) / calc(var(--content-alpha) - 0.08));
+  --surface: rgb(var(--content-tint) / calc(var(--content-alpha) - 0.02));
   --sidebar-surface: rgb(var(--nav-tint) / var(--nav-alpha));
   --titlebar-surface: rgb(var(--nav-tint) / var(--nav-alpha));
   --toolbar-surface: rgb(var(--nav-tint) / var(--nav-alpha));
@@ -2367,25 +2394,38 @@ button.node-card-main:focus-visible { outline: 2px solid var(--accent); outline-
   --main-surface: transparent;
   --dialog-surface: rgb(250 250 252 / min(0.97, calc(var(--nav-alpha) + 0.12)));
   --toast-surface: rgb(250 250 252 / min(0.95, calc(var(--nav-alpha) + 0.1)));
-  --secondary-control-surface: rgb(255 255 255 / 0.85);
-  --search-surface: rgb(255 255 255 / 0.78);
-  --field-surface: rgb(255 255 255 / 0.9);
-  --control-fill: rgb(118 118 128 / 12%);
-  --fill: rgb(118 118 128 / 9%);
-  --fill-hover: rgb(118 118 128 / 15%);
-  --divider: rgb(60 60 67 / 13%);
+  --secondary-control-surface: #fff;
+  --search-surface: rgb(255 255 255 / 94%);
+  --field-surface: #f5f5f7;
+  --settings-heading-surface: transparent;
+  --wallpaper-option-surface: transparent;
+  --control-fill: rgb(118 118 128 / 9%);
+  --control-selected-surface: #fff;
+  --fill: rgb(118 118 128 / 5%);
+  --fill-hover: rgb(118 118 128 / 9%);
+  --divider: rgb(60 60 67 / 9%);
+  --shadow-control: 0 1px 3px rgb(0 0 0 / 8%), 0 0 0 0.5px rgb(0 0 0 / 4%);
   /* Light glass: hairline grey edge + soft white top highlight, no glow. */
-  --nav-edge: rgb(0 0 0 / 9%);
-  --nav-highlight: rgb(255 255 255 / 70%);
-  --card-edge: rgb(0 0 0 / 7%);
-  --card-shadow: 0 1px 2px rgb(0 0 0 / 5%), 0 8px 24px rgb(0 0 0 / 6%);
-  --nav-shadow: 0 1px 2px rgb(0 0 0 / 6%), 0 12px 32px rgb(0 0 0 / 10%);
+  --nav-edge: rgb(0 0 0 / 6%);
+  --nav-highlight: rgb(255 255 255 / 80%);
+  --card-edge: rgb(0 0 0 / 5%);
+  --card-shadow: 0 1px 2px rgb(0 0 0 / 3%), 0 8px 24px rgb(0 0 0 / 4%);
+  --nav-shadow: 0 2px 6px rgb(0 0 0 / 4%), 0 16px 40px rgb(0 0 0 / 9%);
 }
 .wallpaper-desktop[data-theme="dark"] {
-  --material-saturate: 180%;
+  --nav-alpha: calc(0.28 + var(--glass-alpha) * 0.38);
+  --content-alpha: calc(0.4 + var(--glass-alpha) * 0.38);
+  --nav-backdrop: blur(var(--material-blur)) saturate(115%) brightness(0.72);
+  --lens-light: brightness(0.72);
+  --lens-edge: rgb(255 255 255 / 24%);
+  --lens-highlight: rgb(255 255 255 / 48%);
+  --lens-lowlight: rgb(0 0 0 / 38%);
+  --lens-sheen: rgb(255 255 255 / 7%);
   --nav-tint: 36 36 40;
   --content-tint: 28 28 30;
   --veil: 0 0 0;
+  --ink-secondary: #c6c6cc;
+  --ink-tertiary: #acacb3;
   --surface-strong: rgb(var(--content-tint) / var(--content-alpha));
   --surface: rgb(var(--content-tint) / calc(var(--content-alpha) - 0.08));
   --sidebar-surface: rgb(var(--nav-tint) / var(--nav-alpha));
@@ -2398,6 +2438,8 @@ button.node-card-main:focus-visible { outline: 2px solid var(--accent); outline-
   --secondary-control-surface: rgb(255 255 255 / 0.1);
   --search-surface: rgb(0 0 0 / 0.22);
   --field-surface: rgb(0 0 0 / 0.25);
+  --settings-heading-surface: transparent;
+  --wallpaper-option-surface: transparent;
   --nav-edge: rgb(255 255 255 / 10%);
   --nav-highlight: rgb(255 255 255 / 9%);
   --card-edge: rgb(255 255 255 / 8%);
@@ -2432,8 +2474,8 @@ button.node-card-main:focus-visible { outline: 2px solid var(--accent); outline-
 .page-header,
 .overview-header,
 .proxy-group-rail button .proxy-group-avatar {
-  backdrop-filter: blur(var(--material-blur)) saturate(var(--material-saturate));
-  -webkit-backdrop-filter: blur(var(--material-blur)) saturate(var(--material-saturate));
+  backdrop-filter: var(--nav-backdrop);
+  -webkit-backdrop-filter: var(--nav-backdrop);
 }
 .product-brand img { width: 22px; height: 22px; }
 .sidebar { background: var(--sidebar-surface); }
@@ -2478,7 +2520,7 @@ button.node-card-main:focus-visible { outline: 2px solid var(--accent); outline-
   .app-main { padding-bottom: 84px; }
 }
 
-/* ---- Content layer: grouped surfaces (light frost only) ---- */
+/* ---- Content layer: readable tint; major panels also receive lens edges ---- */
 .primary-controls,
 .home-card,
 .proxy-group-card,
@@ -2492,11 +2534,42 @@ button.node-card-main:focus-visible { outline: 2px solid var(--accent); outline-
   border: 0.5px solid var(--card-edge);
   background: var(--surface-strong);
   box-shadow: var(--card-shadow);
-  backdrop-filter: blur(20px) saturate(120%);
-  -webkit-backdrop-filter: blur(20px) saturate(120%);
+  backdrop-filter: var(--content-backdrop);
+  -webkit-backdrop-filter: var(--content-backdrop);
 }
 .connection-card { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgb(var(--content-tint) / min(0.96, calc(var(--content-alpha) + 0.04))); }
 .overview-status { border: 0.5px solid var(--card-edge); background: var(--surface-strong); }
+
+/* Light mode: quiet controls and a single statistics surface. */
+[data-theme="light"] .nav-item[data-active="true"] { background: rgb(0 122 255 / 10%); }
+[data-theme="light"] .button-secondary,
+[data-theme="light"] .theme-toggle { border-color: var(--card-edge); box-shadow: var(--shadow-control); }
+[data-theme="light"] .sidebar-traffic { border-color: var(--card-edge); background: rgb(255 255 255 / 65%); }
+[data-theme="light"] .page-header h1,
+[data-theme="light"] .overview-header h1 { font-weight: 650; letter-spacing: -0.025em; }
+[data-theme="light"] .page-header p,
+[data-theme="light"] .sidebar-brand .window-status,
+[data-theme="light"] .overview-status small { color: var(--nav-ink); }
+[data-theme="light"] .home-card header h2 { color: var(--ink); font-weight: 600; }
+[data-theme="light"] .home-card-icon { background: rgb(0 122 255 / 7%); }
+[data-theme="light"] .home-card-value { font-size: 20px; font-weight: 650; }
+[data-theme="light"] .home-card-list > div { border-bottom-style: solid; }
+[data-theme="light"] .traffic-stats { gap: 0; margin-top: 6px; border-top: 1px solid var(--divider); }
+[data-theme="light"] .traffic-stat { padding: 12px; border-radius: 0; background: transparent; }
+[data-theme="light"] .traffic-stat strong { font-size: 20px; font-weight: 650; }
+[data-theme="light"] .traffic-stat:nth-child(n + 4) { border-top: 1px solid var(--divider); }
+[data-theme="light"] .traffic-stat:not(:nth-child(3n + 1)) { border-left: 1px solid var(--divider); }
+[data-theme="light"] .traffic-stat[data-tone="up"] strong,
+[data-theme="light"] .sidebar-traffic-row[data-tone="up"] strong,
+[data-theme="light"] .sidebar-traffic-row[data-tone="up"] svg { color: #995700; }
+
+@media (max-width: 700px) {
+  [data-theme="light"] .traffic-stat { padding: 12px 8px; }
+  [data-theme="light"] .traffic-stat:nth-child(n + 3) { border-top: 1px solid var(--divider); }
+  [data-theme="light"] .traffic-stat:nth-child(odd) { border-left: 0; }
+  [data-theme="light"] .traffic-stat:nth-child(even) { border-left: 1px solid var(--divider); }
+}
+
 /* Fields and controls that sit directly on the wallpaper get a solid-ish base. */
 .page-search,
 .connections-search,
@@ -2506,8 +2579,8 @@ button.node-card-main:focus-visible { outline: 2px solid var(--accent); outline-
   border-color: var(--card-edge);
   background: rgb(var(--content-tint) / var(--content-alpha));
   box-shadow: var(--card-shadow);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: var(--content-backdrop);
+  -webkit-backdrop-filter: var(--content-backdrop);
 }
 
 /* ---- Dialogs, toast: thick material ---- */
@@ -2518,8 +2591,8 @@ button.node-card-main:focus-visible { outline: 2px solid var(--accent); outline-
 .toast {
   border: 0.5px solid var(--nav-edge);
   box-shadow: inset 0 0.5px 0 var(--nav-highlight), 0 24px 60px rgb(0 0 0 / 25%);
-  backdrop-filter: blur(40px) saturate(var(--material-saturate));
-  -webkit-backdrop-filter: blur(40px) saturate(var(--material-saturate));
+  backdrop-filter: var(--nav-backdrop);
+  -webkit-backdrop-filter: var(--nav-backdrop);
 }
 
 /* Logs keep their console look. */
@@ -2529,11 +2602,42 @@ button.node-card-main:focus-visible { outline: 2px solid var(--accent); outline-
   -webkit-backdrop-filter: blur(20px);
 }
 
+.glass-definitions { position: fixed; pointer-events: none; }
+.wallpaper-desktop :is(.sidebar, .page-header, .overview-header, .mobile-brand,
+  .primary-controls, .home-card, .settings-section, .node-modal, .provider-modal,
+  .confirm-modal, .auto-group-modal, .toast) {
+  background-image: linear-gradient(135deg, var(--lens-sheen), transparent 45%, transparent 75%, var(--lens-sheen));
+  border-color: var(--lens-edge);
+  box-shadow: inset 0.75px 1px 0 var(--lens-highlight),
+    inset -0.5px -1px 0 var(--lens-lowlight),
+    inset 0 -2px 4px rgb(255 255 255 / 9%),
+    0 2px 4px rgb(0 0 0 / 5%), 0 12px 32px rgb(0 0 0 / 12%);
+  /* The SVG bends the backdrop only. Text, charts and controls stay sharp. */
+  backdrop-filter: blur(var(--lens-blur)) var(--liquid-filter, blur(0px)) saturate(115%) var(--lens-light);
+  -webkit-backdrop-filter: blur(var(--lens-blur)) var(--liquid-filter, blur(0px)) saturate(115%) var(--lens-light);
+}
+.wallpaper-desktop :is(.node-modal, .provider-modal, .confirm-modal, .auto-group-modal, .toast) {
+  /* A dialog sits over live text and charts, so its centre needs more separation. */
+  --lens-blur: 12px;
+  background-color: rgb(var(--content-tint) / max(0.82, var(--content-alpha)));
+}
+
 /* Selected node card: Apple-style tinted fill instead of a glowing rim. */
 [data-theme="light"] .node-card[data-selected="true"] { background: rgb(10 132 255 / 12%); border-color: rgb(10 132 255 / 35%); }
 
 @media (prefers-reduced-transparency: reduce) {
-  .wallpaper-desktop { --glass-alpha: 0.95 !important; }
+  .wallpaper-desktop {
+    --nav-alpha: 1 !important;
+    --content-alpha: 1 !important;
+    --lens-blur: 0px;
+    --lens-sheen: transparent;
+    --lens-light: brightness(1);
+  }
+  .wallpaper-desktop [data-liquid-glass="true"] {
+    background-image: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }
 
 /* Appearance settings: sliders + removable wallpapers */
@@ -2632,7 +2736,7 @@ button.node-card-main:focus-visible { outline: 2px solid var(--accent); outline-
 .material-levels { width: 100%; }
 .material-levels button { min-height: 30px; font-size: 12px; }
 
-/* ---- Round 9: no title bar; identity at the top of the sidebar (macOS) ---- */
+/* ---- Sidebar brand and viewport layout ---- */
 .app-shell { height: 100%; }
 .overview-page,
 .page { padding-top: 10px; }
@@ -2697,6 +2801,13 @@ button.node-card-main:focus-visible { outline: 2px solid var(--accent); outline-
     gap: 8px;
     padding: 14px 18px 0;
   }
+  .wallpaper-desktop .mobile-brand {
+    margin: 10px 16px 0;
+    padding: 10px 12px;
+    border: 0.5px solid var(--nav-edge);
+    border-radius: 14px;
+    background: var(--toolbar-surface);
+  }
   .mobile-brand img { border-radius: 7px; box-shadow: 0 1px 3px rgb(0 0 0 / 22%); }
   .mobile-brand strong { font-size: 16px; font-weight: 700; text-shadow: var(--on-wallpaper-shadow, none); }
   .mobile-status {
@@ -2708,12 +2819,13 @@ button.node-card-main:focus-visible { outline: 2px solid var(--accent); outline-
     border: 0.5px solid var(--nav-edge);
     border-radius: 999px;
     background: var(--toolbar-surface);
-    backdrop-filter: blur(20px) saturate(var(--material-saturate));
-    -webkit-backdrop-filter: blur(20px) saturate(var(--material-saturate));
+    backdrop-filter: var(--nav-backdrop);
+    -webkit-backdrop-filter: var(--nav-backdrop);
     font-size: 11px;
     font-weight: 600;
   }
   .mobile-status i { width: 6px; height: 6px; border-radius: 50%; background: #30d158; }
+  .mobile-status { border-color: transparent; background: var(--fill); backdrop-filter: none; -webkit-backdrop-filter: none; }
   .mobile-status[data-state="connecting"] i { background: #ff9f0a; }
   .mobile-status[data-state="disconnected"] i { background: #ff453a; }
   .overview-page,

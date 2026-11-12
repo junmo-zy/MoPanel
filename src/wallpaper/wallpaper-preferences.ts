@@ -31,7 +31,7 @@ export const WALLPAPER_LIMITS = {
 export const GLASS_LEVELS = [
   { value: 25, label: "超薄", hint: "最通透，适合安静、颜色单一的壁纸" },
   { value: 45, label: "轻薄", hint: "能看到更多壁纸，文字依旧清楚" },
-  { value: 65, label: "标准", hint: "接近 macOS 默认材质" },
+  { value: 65, label: "标准", hint: "平衡通透感与文字清晰度" },
   { value: 85, label: "浓厚", hint: "最易读，适合花哨或明亮的壁纸" },
 ] as const;
 
