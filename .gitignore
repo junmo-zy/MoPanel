@@ -15,10 +15,14 @@ config/
 *.tar
 
 # Local NAS deployment and SMB temporary files
+/AGENTS.md
 /compose.yaml
 /compose.build.yaml
 /NAS开发说明.md
 .smbdelete*
+.DS_Store
+._*
+.tmp-*
 
 # Public deployment templates
 !deploy/fnos/mopanel/.env.config-lan.example

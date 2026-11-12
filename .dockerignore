@@ -4,6 +4,10 @@ dist
 .git
 *.log
 design-qa.md
+AGENTS.md
+NAS开发说明.md
+compose.yaml
+compose.build.yaml
 screenshots
 docs/images
 .env
@@ -15,3 +19,5 @@ config
 *.tar
 .tmp-*
 .smbdelete*
+.DS_Store
+._*
